@@ -538,7 +538,8 @@ function yankSelection() {
   const model = editor.getModel();
   if (!model) return;
 
-  const text = model.getValueInRange(new monacoApi.Range(startLine, 1, endLine + 1, 1));
+  const endCol = model.getLineMaxColumn(endLine);
+  const text = model.getValueInRange(new monacoApi.Range(startLine, 1, endLine, endCol));
 
   // Use textarea fallback for clipboard (Chromium CDP may block navigator.clipboard)
   const ta = document.createElement("textarea");
