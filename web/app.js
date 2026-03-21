@@ -9,6 +9,10 @@ const state = {
   collapsedDirs: {},
   reviewedFiles: {},
   scrollPositions: {},
+  vim: {
+    side: "modified",
+    visualAnchor: null,
+  },
 };
 
 const repoRootEl = document.getElementById("repo-root");
@@ -361,11 +365,118 @@ function renderCommentDOM(comment, onDelete) {
   textarea.addEventListener("input", () => {
     comment.body = textarea.value;
   });
+  textarea.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      textarea.blur();
+    }
+  });
   container.querySelector("[data-action='delete']").addEventListener("click", onDelete);
   if (!comment.body) {
     setTimeout(() => textarea.focus(), 50);
   }
   return container;
+}
+
+function getEditorBySide(side) {
+  if (!diffEditor) return null;
+  return side === "original" ? diffEditor.getOriginalEditor() : diffEditor.getModifiedEditor();
+}
+
+function inferActiveSide() {
+  if (!diffEditor) return state.vim.side;
+  const original = diffEditor.getOriginalEditor();
+  const modified = diffEditor.getModifiedEditor();
+  if (original.hasTextFocus()) return "original";
+  if (modified.hasTextFocus()) return "modified";
+  return state.vim.side;
+}
+
+function clampLine(editor, line) {
+  const lineCount = editor.getModel()?.getLineCount?.() ?? 1;
+  return Math.max(1, Math.min(lineCount, line));
+}
+
+function currentLine(editor) {
+  const pos = editor.getPosition();
+  return clampLine(editor, pos?.lineNumber ?? 1);
+}
+
+function clearVisualSelection() {
+  const side = state.vim.side;
+  const editor = getEditorBySide(side);
+  if (!editor || !monacoApi) return;
+  const line = currentLine(editor);
+  editor.setSelection(new monacoApi.Selection(line, 1, line, 1));
+  state.vim.visualAnchor = null;
+}
+
+function moveCursor(delta) {
+  const side = inferActiveSide();
+  state.vim.side = side;
+  const editor = getEditorBySide(side);
+  if (!editor || !monacoApi) return;
+
+  const from = currentLine(editor);
+  const to = clampLine(editor, from + delta);
+
+  if (state.vim.visualAnchor != null) {
+    editor.setSelection(new monacoApi.Selection(state.vim.visualAnchor, 1, to, 1));
+  } else {
+    editor.setPosition({ lineNumber: to, column: 1 });
+    editor.setSelection(new monacoApi.Selection(to, 1, to, 1));
+  }
+
+  editor.revealLineInCenter(to);
+  editor.focus();
+}
+
+function toggleVisualMode() {
+  const side = inferActiveSide();
+  state.vim.side = side;
+  const editor = getEditorBySide(side);
+  if (!editor) return;
+
+  if (state.vim.visualAnchor == null) {
+    state.vim.visualAnchor = currentLine(editor);
+  } else {
+    clearVisualSelection();
+  }
+}
+
+function addCommentFromKeyboard() {
+  const file = activeFile();
+  if (!file || !monacoApi) return;
+
+  const side = inferActiveSide();
+  state.vim.side = side;
+  const editor = getEditorBySide(side);
+  if (!editor) return;
+
+  const selection = editor.getSelection();
+  let startLine = currentLine(editor);
+  let endLine = startLine;
+
+  if (selection && !selection.isEmpty()) {
+    startLine = Math.min(selection.startLineNumber, selection.endLineNumber);
+    endLine = Math.max(selection.startLineNumber, selection.endLineNumber);
+  } else if (state.vim.visualAnchor != null) {
+    startLine = Math.min(state.vim.visualAnchor, startLine);
+    endLine = Math.max(state.vim.visualAnchor, startLine);
+  }
+
+  state.comments.push({
+    id: `${Date.now()}:${Math.random().toString(16).slice(2)}`,
+    fileId: file.id,
+    side,
+    startLine,
+    endLine,
+    body: "",
+  });
+
+  state.vim.visualAnchor = null;
+  updateCommentsUI();
+  editor.revealLineInCenter(startLine);
 }
 
 function syncViewZones() {
@@ -685,3 +796,59 @@ toggleReviewedButton.addEventListener("click", () => {
 renderTree();
 renderFileComments();
 setupMonaco();
+
+window.addEventListener("keydown", (event) => {
+  const target = event.target;
+  const inInput = target instanceof HTMLElement && (
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "INPUT" ||
+    target.isContentEditable
+  );
+
+  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault();
+    submitButton.click();
+    return;
+  }
+
+  if (inInput) return;
+
+  if (event.key === "j") {
+    event.preventDefault();
+    moveCursor(1);
+    return;
+  }
+  if (event.key === "k") {
+    event.preventDefault();
+    moveCursor(-1);
+    return;
+  }
+  if (event.key === "d" && event.ctrlKey) {
+    event.preventDefault();
+    moveCursor(12);
+    return;
+  }
+  if (event.key === "u" && event.ctrlKey) {
+    event.preventDefault();
+    moveCursor(-12);
+    return;
+  }
+  if (event.key === "v") {
+    event.preventDefault();
+    toggleVisualMode();
+    return;
+  }
+  if (event.key === "a") {
+    event.preventDefault();
+    addCommentFromKeyboard();
+    return;
+  }
+  if (event.key === "Enter") {
+    event.preventDefault();
+    submitButton.click();
+    return;
+  }
+  if (event.key === "Escape") {
+    state.vim.visualAnchor = null;
+  }
+});
