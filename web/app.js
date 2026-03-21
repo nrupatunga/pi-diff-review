@@ -539,7 +539,15 @@ function yankSelection() {
   if (!model) return;
 
   const text = model.getValueInRange(new monacoApi.Range(startLine, 1, endLine + 1, 1));
-  navigator.clipboard.writeText(text).catch(() => {});
+
+  // Use textarea fallback for clipboard (Chromium CDP may block navigator.clipboard)
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.cssText = "position:fixed;left:-9999px;top:-9999px;opacity:0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); } catch {}
+  document.body.removeChild(ta);
 
   flashYankRange(editor, startLine, endLine);
 
