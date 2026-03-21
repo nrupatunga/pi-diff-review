@@ -591,11 +591,15 @@ function addCommentFromKeyboard() {
 }
 
 function focusSide(side) {
+  const prevSide = state.vim.side;
+  const prevEditor = getEditorBySide(prevSide);
+  const prevLine = prevEditor ? currentLine(prevEditor) : 1;
+
   state.vim.side = side;
   const editor = getEditorBySide(side);
   if (!editor || !monacoApi) return;
 
-  const line = currentLine(editor);
+  const line = clampLine(editor, prevLine);
   editor.setPosition({ lineNumber: line, column: 1 });
   editor.setSelection(new monacoApi.Selection(line, 1, line, 1));
   editor.revealLineInCenter(line);
@@ -604,6 +608,7 @@ function focusSide(side) {
 
 function toggleFocusedSide() {
   const current = inferActiveSide();
+  state.vim.side = current;
   focusSide(current === "original" ? "modified" : "original");
 }
 
