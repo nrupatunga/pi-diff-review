@@ -1,10 +1,20 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { ChangeStatus, DiffReviewFile } from "./types.js";
 
 const MAX_FILE_CHARS = 250_000;
 const MAX_TOTAL_CHARS = 2_000_000;
+const MAX_READ_BYTES = 1_000_000;
+
+const BINARY_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".tif", ".tiff", ".heic", ".svgz",
+  ".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v",
+  ".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a",
+  ".zip", ".tar", ".gz", ".bz2", ".xz", ".7z", ".rar",
+  ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+  ".so", ".dll", ".dylib", ".exe", ".bin", ".o", ".a", ".class", ".jar",
+]);
 
 interface ChangedPath {
   status: ChangeStatus;
@@ -92,6 +102,21 @@ function parseNameStatus(output: string): ChangedPath[] {
 }
 
 async function getHeadContent(pi: ExtensionAPI, repoRoot: string, path: string): Promise<string> {
+  const lowerPath = path.toLowerCase();
+  const dot = lowerPath.lastIndexOf(".");
+  const ext = dot >= 0 ? lowerPath.slice(dot) : "";
+  if (BINARY_EXTENSIONS.has(ext)) {
+    return `/* old content omitted for ${path}: binary extension (${ext}) */`;
+  }
+
+  const sizeResult = await pi.exec("git", ["cat-file", "-s", `HEAD:${path}`], { cwd: repoRoot });
+  if (sizeResult.code === 0) {
+    const size = Number.parseInt(sizeResult.stdout.trim(), 10);
+    if (Number.isFinite(size) && size > MAX_READ_BYTES) {
+      return `/* old content omitted for ${path}: blob is ${size.toLocaleString()} bytes (> ${MAX_READ_BYTES.toLocaleString()} byte read limit) */`;
+    }
+  }
+
   const result = await pi.exec("git", ["show", `HEAD:${path}`], { cwd: repoRoot });
   if (result.code !== 0) {
     return "";
@@ -101,7 +126,20 @@ async function getHeadContent(pi: ExtensionAPI, repoRoot: string, path: string):
 
 async function getWorkingTreeContent(repoRoot: string, path: string): Promise<string> {
   try {
-    return await readFile(join(repoRoot, path), "utf8");
+    const lowerPath = path.toLowerCase();
+    const dot = lowerPath.lastIndexOf(".");
+    const ext = dot >= 0 ? lowerPath.slice(dot) : "";
+    if (BINARY_EXTENSIONS.has(ext)) {
+      return `/* new content omitted for ${path}: binary extension (${ext}) */`;
+    }
+
+    const absPath = join(repoRoot, path);
+    const fileStat = await stat(absPath);
+    if (fileStat.size > MAX_READ_BYTES) {
+      return `/* new content omitted for ${path}: file is ${fileStat.size.toLocaleString()} bytes (> ${MAX_READ_BYTES.toLocaleString()} byte read limit) */`;
+    }
+
+    return await readFile(absPath, "utf8");
   } catch {
     return "";
   }
