@@ -619,8 +619,29 @@ function goToPrevHunk() {
   editor.focus();
 }
 
+function getVisualFileOrder() {
+  const ordered = [];
+  function walk(node) {
+    const children = [...node.children.values()].sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    for (const child of children) {
+      if (child.kind === "dir") {
+        if (state.collapsedDirs[child.path] !== true) {
+          walk(child);
+        }
+      } else if (child.file) {
+        ordered.push(child.file);
+      }
+    }
+  }
+  walk(buildTree(reviewData.files));
+  return ordered;
+}
+
 function switchFile(delta) {
-  const files = reviewData.files;
+  const files = getVisualFileOrder();
   if (files.length === 0) return;
 
   const currentIndex = files.findIndex((f) => f.id === state.activeFileId);
