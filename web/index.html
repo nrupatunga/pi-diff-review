@@ -109,6 +109,65 @@
     background: #58a6ff;
   }
 
+  #key-debug-overlay {
+    position: fixed;
+    bottom: 8px;
+    right: 8px;
+    width: 280px;
+    max-height: 180px;
+    overflow-y: auto;
+    background: rgba(1, 4, 9, 0.92);
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: "Typestar OCR", "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: #c9d1d9;
+    z-index: 200;
+    pointer-events: none;
+    display: none;
+  }
+
+  #key-debug-overlay.active { display: block; }
+
+  #key-debug-overlay .key-entry {
+    display: flex;
+    gap: 6px;
+    padding: 1px 0;
+    border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+  }
+
+  #key-debug-overlay .key-entry:last-child { border-bottom: none; }
+
+  #key-debug-overlay .key-name {
+    color: #facc15;
+    min-width: 80px;
+    flex-shrink: 0;
+  }
+
+  #key-debug-overlay .key-action {
+    color: #3fb950;
+  }
+
+  #key-debug-overlay .key-blocked {
+    color: #f85149;
+  }
+
+  #key-debug-overlay .key-time {
+    color: #8b949e;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  #key-debug-overlay .key-header {
+    color: #58a6ff;
+    font-weight: 600;
+    margin-bottom: 4px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
   .monaco-editor .review-glyph-plus {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' width='16' height='16'%3E%3Cpath fill='%23c9d1d9' d='M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z'%3E%3C/path%3E%3C/svg%3E");
     background-repeat: no-repeat;
@@ -161,6 +220,11 @@
     <div id="file-comments-container" class="hidden border-b border-review-border bg-[#0d1117] px-4 py-0"></div>
     <div id="editor-container" class="min-h-0 min-w-0 flex-1"></div>
   </main>
+</div>
+
+<div id="key-debug-overlay">
+  <div class="key-header">Key Debug (Ctrl+Shift+D)</div>
+  <div id="key-debug-log"></div>
 </div>
 
 <script id="diff-review-data" type="application/json">__INLINE_DATA__</script>

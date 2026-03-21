@@ -1007,6 +1007,48 @@ renderTree();
 renderFileComments();
 setupMonaco();
 
+const keyDebugOverlay = document.getElementById("key-debug-overlay");
+const keyDebugLog = document.getElementById("key-debug-log");
+const KEY_DEBUG_MAX = 20;
+
+function isKeyDebugActive() {
+  return keyDebugOverlay.classList.contains("active");
+}
+
+function toggleKeyDebug() {
+  keyDebugOverlay.classList.toggle("active");
+  if (!isKeyDebugActive()) {
+    keyDebugLog.innerHTML = "";
+  }
+}
+
+function logKeyEvent(keyLabel, action, blocked) {
+  if (!isKeyDebugActive()) return;
+
+  const now = new Date();
+  const ts = `${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}.${String(now.getMilliseconds()).padStart(3, "0")}`;
+
+  const entry = document.createElement("div");
+  entry.className = "key-entry";
+  entry.innerHTML = `<span class="key-name">${escapeHtml(keyLabel)}</span><span class="${blocked ? "key-blocked" : "key-action"}">${escapeHtml(action)}</span><span class="key-time">${ts}</span>`;
+
+  keyDebugLog.insertBefore(entry, keyDebugLog.firstChild);
+
+  while (keyDebugLog.children.length > KEY_DEBUG_MAX) {
+    keyDebugLog.removeChild(keyDebugLog.lastChild);
+  }
+}
+
+function formatKeyLabel(event) {
+  const parts = [];
+  if (event.ctrlKey) parts.push("Ctrl");
+  if (event.metaKey) parts.push("Cmd");
+  if (event.altKey) parts.push("Alt");
+  if (event.shiftKey) parts.push("Shift");
+  parts.push(event.key);
+  return parts.join("+");
+}
+
 window.addEventListener("keydown", (event) => {
   const target = event.target;
   const isElement = target instanceof HTMLElement;
@@ -1018,13 +1060,25 @@ window.addEventListener("keydown", (event) => {
     (target.isContentEditable && !inMonaco)
   );
 
+  const keyLabel = formatKeyLabel(event);
+
+  if (event.key === "D" && event.ctrlKey && event.shiftKey) {
+    event.preventDefault();
+    toggleKeyDebug();
+    return;
+  }
+
   if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
+    logKeyEvent(keyLabel, "submit (Ctrl-Enter)", false);
     submitButton.click();
     return;
   }
 
-  if (inCommentInput) return;
+  if (inCommentInput) {
+    logKeyEvent(keyLabel, "passed to input", true);
+    return;
+  }
 
   // Handle two-key sequences: gg, ]c, [c
   if (state.vim.pendingKey != null) {
@@ -1033,61 +1087,72 @@ window.addEventListener("keydown", (event) => {
 
     if (combo === "gg") {
       event.preventDefault();
+      logKeyEvent(combo, "go to beginning", false);
       goToBeginning();
       return;
     }
     if (combo === "]c") {
       event.preventDefault();
+      logKeyEvent(combo, "next hunk", false);
       goToNextHunk();
       return;
     }
     if (combo === "[c") {
       event.preventDefault();
+      logKeyEvent(combo, "prev hunk", false);
       goToPrevHunk();
       return;
     }
-    // Unknown combo — fall through
+    logKeyEvent(combo, "unknown combo", true);
   }
 
   // Start pending sequences
   if (event.key === "g" && !event.ctrlKey && !event.metaKey) {
     state.vim.pendingKey = "g";
+    logKeyEvent(keyLabel, "pending: g...", false);
     event.preventDefault();
     return;
   }
   if (event.key === "]" && !event.ctrlKey && !event.metaKey) {
     state.vim.pendingKey = "]";
+    logKeyEvent(keyLabel, "pending: ]...", false);
     event.preventDefault();
     return;
   }
   if (event.key === "[" && !event.ctrlKey && !event.metaKey) {
     state.vim.pendingKey = "[";
+    logKeyEvent(keyLabel, "pending: [...", false);
     event.preventDefault();
     return;
   }
 
   if (event.key === "G" && !event.ctrlKey && !event.metaKey) {
     event.preventDefault();
+    logKeyEvent(keyLabel, "go to end", false);
     goToEnd();
     return;
   }
   if (event.key === "j" && !event.shiftKey) {
     event.preventDefault();
+    logKeyEvent(keyLabel, "cursor down", false);
     moveCursor(1);
     return;
   }
   if (event.key === "k" && !event.shiftKey) {
     event.preventDefault();
+    logKeyEvent(keyLabel, "cursor up", false);
     moveCursor(-1);
     return;
   }
   if (event.key === "J") {
     event.preventDefault();
+    logKeyEvent(keyLabel, "next file", false);
     switchFile(1);
     return;
   }
   if (event.key === "K") {
     event.preventDefault();
+    logKeyEvent(keyLabel, "prev file", false);
     switchFile(-1);
     return;
   }
@@ -1095,76 +1160,95 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
+    const action = event.key === "d" ? "half-page down" : "half-page up";
+    logKeyEvent(keyLabel, action, false);
     moveCursor(event.key === "d" ? 12 : -12);
     return;
   }
   if (event.key === "n" && event.ctrlKey) {
     event.preventDefault();
+    logKeyEvent(keyLabel, "next hunk", false);
     goToNextHunk();
     return;
   }
   if (event.key === "p" && event.ctrlKey) {
     event.preventDefault();
+    logKeyEvent(keyLabel, "prev hunk", false);
     goToPrevHunk();
     return;
   }
   if (event.key === "v") {
     event.preventDefault();
+    logKeyEvent(keyLabel, "visual toggle", false);
     toggleVisualMode();
     return;
   }
   if (event.key === "a") {
     event.preventDefault();
+    logKeyEvent(keyLabel, "add comment", false);
     addCommentFromKeyboard();
     return;
   }
   if (event.key === "Tab") {
     event.preventDefault();
+    logKeyEvent(keyLabel, "toggle pane", false);
     toggleFocusedSide();
     return;
   }
   if (event.key === "h" && !event.shiftKey) {
     event.preventDefault();
+    logKeyEvent(keyLabel, "focus original", false);
     focusSide("original");
     return;
   }
   if (event.key === "l" && !event.shiftKey) {
     event.preventDefault();
+    logKeyEvent(keyLabel, "focus modified", false);
     focusSide("modified");
     return;
   }
   if (event.key === "r" && !event.ctrlKey && !event.metaKey) {
     event.preventDefault();
+    logKeyEvent(keyLabel, "mark reviewed", false);
     toggleReviewedButton.click();
     return;
   }
   if (event.key === "o" && !event.ctrlKey && !event.metaKey) {
     event.preventDefault();
+    logKeyEvent(keyLabel, "overall note", false);
     showOverallCommentModal();
     return;
   }
   if (event.key === "q" && !event.ctrlKey && !event.metaKey) {
     event.preventDefault();
+    logKeyEvent(keyLabel, "cancel review", false);
     cancelButton.click();
     return;
   }
   if (event.key === "?") {
     event.preventDefault();
+    logKeyEvent(keyLabel, "show help", false);
     showHelpOverlay();
     return;
   }
   if (event.key === "Enter") {
     event.preventDefault();
+    logKeyEvent(keyLabel, "submit", false);
     submitButton.click();
     return;
   }
   if (event.key === "Escape") {
     const helpOverlay = document.getElementById("vim-help-overlay");
-    if (helpOverlay) { helpOverlay.remove(); return; }
+    if (helpOverlay) { logKeyEvent(keyLabel, "close help", false); helpOverlay.remove(); return; }
     if (deleteLatestEmptyInlineCommentForActiveFile()) {
       event.preventDefault();
+      logKeyEvent(keyLabel, "delete draft", false);
       return;
     }
+    logKeyEvent(keyLabel, "clear visual", false);
     state.vim.visualAnchor = null;
+    return;
   }
+
+  logKeyEvent(keyLabel, "unhandled", true);
 }, true);
