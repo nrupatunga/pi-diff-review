@@ -99,6 +99,8 @@ function inferLanguage(path) {
   if (lower.endsWith(".kt")) return "kotlin";
   if (lower.endsWith(".py")) return "python";
   if (lower.endsWith(".go")) return "go";
+  if (lower.endsWith(".c") || lower.endsWith(".h")) return "c";
+  if (lower.endsWith(".cc") || lower.endsWith(".cpp") || lower.endsWith(".cxx") || lower.endsWith(".hpp") || lower.endsWith(".hh") || lower.endsWith(".hxx")) return "cpp";
   return "plaintext";
 }
 
