@@ -133,8 +133,8 @@ export default function (pi: ExtensionAPI) {
     const html = buildReviewHtml({ repoRoot, files });
     const window = withSanitizedGlimpseEnv(() =>
       open(html, {
-        width: 1680,
-        height: 1020,
+        width: 1440,
+        height: 900,
         title: "pi diff review",
       }),
     );
