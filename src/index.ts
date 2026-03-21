@@ -12,6 +12,33 @@ function isSubmitPayload(value: ReviewWindowMessage): value is ReviewSubmitPaylo
 
 type WaitingEditorResult = "escape" | "window-settled";
 
+function withSanitizedGlimpseEnv<T>(fn: () => T): T {
+  const previousLd = process.env.LD_LIBRARY_PATH;
+  const previousDbusSystem = process.env.DBUS_SYSTEM_BUS_ADDRESS;
+
+  try {
+    if (process.platform === "linux") {
+      const ld = process.env.LD_LIBRARY_PATH ?? "";
+      process.env.LD_LIBRARY_PATH = ld
+        .split(":")
+        .filter((p) => p.length > 0 && !/\/anaconda3\/lib\/?$/.test(p))
+        .join(":");
+
+      if ((process.env.DBUS_SYSTEM_BUS_ADDRESS ?? "").includes("anaconda3")) {
+        delete process.env.DBUS_SYSTEM_BUS_ADDRESS;
+      }
+    }
+
+    return fn();
+  } finally {
+    if (previousLd == null) delete process.env.LD_LIBRARY_PATH;
+    else process.env.LD_LIBRARY_PATH = previousLd;
+
+    if (previousDbusSystem == null) delete process.env.DBUS_SYSTEM_BUS_ADDRESS;
+    else process.env.DBUS_SYSTEM_BUS_ADDRESS = previousDbusSystem;
+  }
+}
+
 export default function (pi: ExtensionAPI) {
   let activeWindow: GlimpseWindow | null = null;
   let activeWaitingUIDismiss: (() => void) | null = null;
@@ -104,11 +131,13 @@ export default function (pi: ExtensionAPI) {
     }
 
     const html = buildReviewHtml({ repoRoot, files });
-    const window = open(html, {
-      width: 1680,
-      height: 1020,
-      title: "pi diff review",
-    });
+    const window = withSanitizedGlimpseEnv(() =>
+      open(html, {
+        width: 1680,
+        height: 1020,
+        title: "pi diff review",
+      }),
+    );
     activeWindow = window;
 
     const waitingUI = showWaitingUI(ctx);
