@@ -1091,14 +1091,11 @@ window.addEventListener("keydown", (event) => {
     switchFile(-1);
     return;
   }
-  if (event.key === "d" && event.ctrlKey) {
+  if (event.ctrlKey && (event.key === "d" || event.key === "u")) {
     event.preventDefault();
-    moveCursor(12);
-    return;
-  }
-  if (event.key === "u" && event.ctrlKey) {
-    event.preventDefault();
-    moveCursor(-12);
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    moveCursor(event.key === "d" ? 12 : -12);
     return;
   }
   if (event.key === "n" && event.ctrlKey) {
