@@ -6,6 +6,9 @@ import type { ChangeStatus, DiffReviewFile } from "./types.js";
 const MAX_FILE_CHARS = 250_000;
 const MAX_TOTAL_CHARS = 2_000_000;
 const MAX_READ_BYTES = 1_000_000;
+const MAX_FILES = 200;
+
+const IGNORED_PREFIXES = [".pi/", "node_modules/", ".git/"];
 
 const BINARY_EXTENSIONS = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".tif", ".tiff", ".heic", ".svgz",
@@ -191,6 +194,11 @@ function toDisplayPath(change: ChangedPath): string {
   return change.newPath ?? change.oldPath ?? "(unknown)";
 }
 
+function shouldIncludeChange(change: ChangedPath): boolean {
+  const paths = [change.oldPath, change.newPath].filter((p): p is string => p != null);
+  return paths.every((p) => !IGNORED_PREFIXES.some((prefix) => p.startsWith(prefix)));
+}
+
 export async function getDiffReviewFiles(pi: ExtensionAPI, cwd: string): Promise<{ repoRoot: string; files: DiffReviewFile[] }> {
   const repoRoot = await getRepoRoot(pi, cwd);
   const repositoryHasHead = await hasHead(pi, repoRoot);
@@ -202,7 +210,9 @@ export async function getDiffReviewFiles(pi: ExtensionAPI, cwd: string): Promise
 
   const trackedPaths = parseNameStatus(trackedOutput);
   const untrackedPaths = parseUntrackedPaths(untrackedOutput);
-  const changedPaths = mergeChangedPaths(trackedPaths, untrackedPaths);
+  const changedPaths = mergeChangedPaths(trackedPaths, untrackedPaths)
+    .filter(shouldIncludeChange)
+    .slice(0, MAX_FILES);
 
   let totalChars = 0;
   const files = await Promise.all(
