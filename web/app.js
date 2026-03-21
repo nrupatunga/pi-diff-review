@@ -608,6 +608,8 @@ function setupMonaco() {
       lineDecorationsWidth: 10,
       overviewRulerBorder: false,
       wordWrap: "on",
+      fontFamily: "Typestar OCR, OCR A Std, OCR A Extended, JetBrains Mono, Fira Code, monospace",
+      fontSize: 12,
     });
 
     createGlyphHoverActions(diffEditor.getOriginalEditor(), "original");
