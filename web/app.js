@@ -505,6 +505,37 @@ function toggleVisualMode() {
   }
 }
 
+function yankSelection() {
+  const side = inferActiveSide();
+  state.vim.side = side;
+  const editor = getEditorBySide(side);
+  if (!editor || !monacoApi) return;
+
+  const selection = editor.getSelection();
+  let startLine, endLine;
+
+  if (selection && !selection.isEmpty()) {
+    startLine = Math.min(selection.startLineNumber, selection.endLineNumber);
+    endLine = Math.max(selection.startLineNumber, selection.endLineNumber);
+  } else if (state.vim.visualAnchor != null) {
+    const cur = currentLine(editor);
+    startLine = Math.min(state.vim.visualAnchor, cur);
+    endLine = Math.max(state.vim.visualAnchor, cur);
+  } else {
+    startLine = currentLine(editor);
+    endLine = startLine;
+  }
+
+  const model = editor.getModel();
+  if (!model) return;
+
+  const text = model.getValueInRange(new monacoApi.Range(startLine, 1, endLine + 1, 1));
+  navigator.clipboard.writeText(text).catch(() => {});
+
+  state.vim.visualAnchor = null;
+  clearVisualSelection();
+}
+
 function addCommentFromKeyboard() {
   const file = activeFile();
   if (!file || !monacoApi) return;
@@ -716,6 +747,7 @@ function showHelpOverlay() {
         <span style="color: #facc15; font-family: monospace;">p / Ctrl-p / [c</span><span style="color: #c9d1d9;">Previous change hunk</span>
         <span style="color: #facc15; font-family: monospace;">v</span><span style="color: #c9d1d9;">Toggle visual line selection</span>
         <span style="color: #facc15; font-family: monospace;">a</span><span style="color: #c9d1d9;">Add comment on selection</span>
+        <span style="color: #facc15; font-family: monospace;">y</span><span style="color: #c9d1d9;">Yank (copy) selection to clipboard</span>
         <span style="color: #facc15; font-family: monospace;">dd / x</span><span style="color: #c9d1d9;">Delete comment at cursor</span>
         <span style="color: #facc15; font-family: monospace;">Esc</span><span style="color: #c9d1d9;">Cancel selection / delete empty draft</span>
         <span style="color: #facc15; font-family: monospace;">h / l</span><span style="color: #c9d1d9;">Focus original / modified pane</span>
@@ -1267,6 +1299,12 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     logKeyEvent(keyLabel, "prev hunk", false);
     goToPrevHunk();
+    return;
+  }
+  if (event.key === "y" && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    logKeyEvent(keyLabel, "yank selection", false);
+    yankSelection();
     return;
   }
   if (event.key === "v") {
