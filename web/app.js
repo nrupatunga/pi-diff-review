@@ -739,7 +739,7 @@ function setupMonaco() {
       rules: [],
       colors: {
         "editor.background": "#0d1117",
-        "editorCursor.foreground": "#58a6ff",
+        "editorCursor.foreground": "#facc15",
         "diffEditor.insertedTextBackground": "#2ea04326",
         "diffEditor.removedTextBackground": "#f8514926",
       }
