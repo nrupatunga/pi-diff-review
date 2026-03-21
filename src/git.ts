@@ -3,6 +3,9 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { ChangeStatus, DiffReviewFile } from "./types.js";
 
+const MAX_FILE_CHARS = 250_000;
+const MAX_TOTAL_CHARS = 2_000_000;
+
 interface ChangedPath {
   status: ChangeStatus;
   oldPath: string | null;
@@ -104,6 +107,19 @@ async function getWorkingTreeContent(repoRoot: string, path: string): Promise<st
   }
 }
 
+function sanitizeContent(path: string, side: "old" | "new", content: string): string {
+  if (content.includes("\u0000")) {
+    return `/* ${side} content omitted for ${path}: appears to be binary data */`;
+  }
+
+  if (content.length > MAX_FILE_CHARS) {
+    const kept = content.slice(0, MAX_FILE_CHARS);
+    return `${kept}\n\n/* ${side} content truncated for ${path}: ${content.length.toLocaleString()} chars exceeds ${MAX_FILE_CHARS.toLocaleString()} char limit */`;
+  }
+
+  return content;
+}
+
 function parseUntrackedPaths(output: string): ChangedPath[] {
   return output
     .split(/\r?\n/)
@@ -150,16 +166,29 @@ export async function getDiffReviewFiles(pi: ExtensionAPI, cwd: string): Promise
   const untrackedPaths = parseUntrackedPaths(untrackedOutput);
   const changedPaths = mergeChangedPaths(trackedPaths, untrackedPaths);
 
+  let totalChars = 0;
   const files = await Promise.all(
     changedPaths.map(async (change, index): Promise<DiffReviewFile> => {
-      const oldContent = change.oldPath == null ? "" : await getHeadContent(pi, repoRoot, change.oldPath);
-      const newContent = change.newPath == null ? "" : await getWorkingTreeContent(repoRoot, change.newPath);
+      const displayPath = toDisplayPath(change);
+      const rawOldContent = change.oldPath == null ? "" : await getHeadContent(pi, repoRoot, change.oldPath);
+      const rawNewContent = change.newPath == null ? "" : await getWorkingTreeContent(repoRoot, change.newPath);
+      let oldContent = sanitizeContent(displayPath, "old", rawOldContent);
+      let newContent = sanitizeContent(displayPath, "new", rawNewContent);
+
+      const prospectiveTotal = totalChars + oldContent.length + newContent.length;
+      if (prospectiveTotal > MAX_TOTAL_CHARS) {
+        oldContent = `/* old content omitted for ${displayPath}: review payload exceeded ${MAX_TOTAL_CHARS.toLocaleString()} chars */`;
+        newContent = `/* new content omitted for ${displayPath}: review payload exceeded ${MAX_TOTAL_CHARS.toLocaleString()} chars */`;
+      }
+
+      totalChars += oldContent.length + newContent.length;
+
       return {
         id: `${index}:${change.status}:${change.oldPath ?? ""}:${change.newPath ?? ""}`,
         status: change.status,
         oldPath: change.oldPath,
         newPath: change.newPath,
-        displayPath: toDisplayPath(change),
+        displayPath,
         oldContent,
         newContent,
       };

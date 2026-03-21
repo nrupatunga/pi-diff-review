@@ -13,7 +13,7 @@
     ]
   },
   "dependencies": {
-    "glimpseui": "^0.6.0"
+    "glimpseui": "github:hazat/glimpse"
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*"
