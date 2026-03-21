@@ -14,7 +14,6 @@ const state = {
     visualAnchor: null,
     pendingKey: null,
   },
-  sidebarVisible: true,
 };
 
 const repoRootEl = document.getElementById("repo-root");
@@ -694,32 +693,6 @@ function switchFile(delta) {
   renderAll({ restoreFileScroll: true });
 }
 
-function toggleSidebar() {
-  state.sidebarVisible = !state.sidebarVisible;
-  const grid = document.getElementById("app-grid");
-  const header = document.getElementById("app-header");
-  const aside = document.querySelector("aside");
-
-  if (state.sidebarVisible) {
-    aside.style.display = "";
-    grid.className = "grid h-full w-full grid-cols-[280px_minmax(0,1fr)] grid-rows-[56px_minmax(0,1fr)]";
-    header.className = header.className.replace("col-span-1", "col-span-2");
-    if (!header.className.includes("col-span-2")) {
-      header.className = header.className + " col-span-2";
-    }
-  } else {
-    aside.style.display = "none";
-    grid.className = "grid h-full w-full grid-cols-[minmax(0,1fr)] grid-rows-[56px_minmax(0,1fr)]";
-    header.className = header.className.replace("col-span-2", "col-span-1");
-  }
-
-  requestAnimationFrame(() => {
-    layoutEditor();
-    setTimeout(layoutEditor, 100);
-    setTimeout(layoutEditor, 300);
-  });
-}
-
 function showHelpOverlay() {
   const existing = document.getElementById("vim-help-overlay");
   if (existing) { existing.remove(); return; }
@@ -748,7 +721,6 @@ function showHelpOverlay() {
         <span style="color: #facc15; font-family: monospace;">o</span><span style="color: #c9d1d9;">Overall note</span>
         <span style="color: #facc15; font-family: monospace;">Enter</span><span style="color: #c9d1d9;">Submit review</span>
         <span style="color: #facc15; font-family: monospace;">Ctrl-Enter</span><span style="color: #c9d1d9;">Submit review</span>
-        <span style="color: #facc15; font-family: monospace;">b</span><span style="color: #c9d1d9;">Toggle sidebar</span>
         <span style="color: #facc15; font-family: monospace;">q</span><span style="color: #c9d1d9;">Cancel review</span>
         <span style="color: #facc15; font-family: monospace;">?</span><span style="color: #c9d1d9;">Toggle this help</span>
       </div>
@@ -1338,12 +1310,6 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     logKeyEvent(keyLabel, "cancel review", false);
     cancelButton.click();
-    return;
-  }
-  if (event.key === "b" && !event.ctrlKey && !event.metaKey) {
-    event.preventDefault();
-    logKeyEvent(keyLabel, "toggle sidebar", false);
-    toggleSidebar();
     return;
   }
   if (event.key === "?") {
