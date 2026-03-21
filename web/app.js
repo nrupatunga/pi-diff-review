@@ -178,7 +178,7 @@ function renderTreeNode(node, depth) {
       const collapsed = state.collapsedDirs[child.path] === true;
       const row = document.createElement("button");
       row.type = "button";
-      row.className = "group flex w-full items-center gap-1.5 px-2 py-1 text-left text-[13px] text-[#c9d1d9] hover:bg-[#21262d]";
+      row.className = "group flex w-full items-center gap-1.5 px-2 py-1 text-left text-[11px] text-[#c9d1d9] hover:bg-[#21262d]";
       row.style.paddingLeft = `${depth * indentPx + 8}px`;
       row.innerHTML = `
         <svg class="h-4 w-4 shrink-0 text-[#8b949e] transition-transform ${collapsed ? "-rotate-90" : ""}" viewBox="0 0 16 16" fill="currentColor">
@@ -203,7 +203,7 @@ function renderTreeNode(node, depth) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = [
-      "group flex w-full items-center justify-between gap-2 px-2 py-1 text-left text-[13px]",
+      "group flex w-full items-center justify-between gap-2 px-2 py-1 text-left text-[11px]",
       file.id === state.activeFileId ? "bg-[#373e47] text-white" : reviewed ? "text-[#c9d1d9] hover:bg-[#21262d]" : "text-[#8b949e] hover:bg-[#21262d] hover:text-[#c9d1d9]",
     ].join(" ");
     button.style.paddingLeft = `${(depth * indentPx) + 26}px`;
