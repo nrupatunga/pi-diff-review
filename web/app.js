@@ -505,6 +505,25 @@ function toggleVisualMode() {
   }
 }
 
+let yankToastTimer = null;
+
+function showYankToast(lineCount) {
+  const toast = document.getElementById("yank-toast");
+  toast.textContent = `Yanked ${lineCount} line${lineCount > 1 ? "s" : ""}`;
+  toast.classList.add("visible");
+  if (yankToastTimer) clearTimeout(yankToastTimer);
+  yankToastTimer = setTimeout(() => toast.classList.remove("visible"), 1200);
+}
+
+function flashYankRange(editor, startLine, endLine) {
+  if (!monacoApi) return;
+  const decs = editor.deltaDecorations([], [{
+    range: new monacoApi.Range(startLine, 1, endLine, 1),
+    options: { isWholeLine: true, className: "yank-flash" },
+  }]);
+  setTimeout(() => editor.deltaDecorations(decs, []), 300);
+}
+
 function yankSelection() {
   const side = inferActiveSide();
   state.vim.side = side;
@@ -531,6 +550,9 @@ function yankSelection() {
 
   const text = model.getValueInRange(new monacoApi.Range(startLine, 1, endLine + 1, 1));
   navigator.clipboard.writeText(text).catch(() => {});
+
+  flashYankRange(editor, startLine, endLine);
+  showYankToast(endLine - startLine + 1);
 
   state.vim.visualAnchor = null;
   clearVisualSelection();
