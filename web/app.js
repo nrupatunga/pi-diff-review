@@ -708,8 +708,8 @@ function showHelpOverlay() {
         <span style="color: #facc15; font-family: monospace;">Ctrl-d / Ctrl-u</span><span style="color: #c9d1d9;">Half-page down / up</span>
         <span style="color: #facc15; font-family: monospace;">gg</span><span style="color: #c9d1d9;">Go to beginning of file</span>
         <span style="color: #facc15; font-family: monospace;">G</span><span style="color: #c9d1d9;">Go to end of file</span>
-        <span style="color: #facc15; font-family: monospace;">Ctrl-n / ]c</span><span style="color: #c9d1d9;">Next change hunk</span>
-        <span style="color: #facc15; font-family: monospace;">Ctrl-p / [c</span><span style="color: #c9d1d9;">Previous change hunk</span>
+        <span style="color: #facc15; font-family: monospace;">n / Ctrl-n / ]c</span><span style="color: #c9d1d9;">Next change hunk</span>
+        <span style="color: #facc15; font-family: monospace;">p / Ctrl-p / [c</span><span style="color: #c9d1d9;">Previous change hunk</span>
         <span style="color: #facc15; font-family: monospace;">v</span><span style="color: #c9d1d9;">Toggle visual line selection</span>
         <span style="color: #facc15; font-family: monospace;">a</span><span style="color: #c9d1d9;">Add comment on selection</span>
         <span style="color: #facc15; font-family: monospace;">dd / x</span><span style="color: #c9d1d9;">Delete comment at cursor</span>
@@ -1250,6 +1250,18 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     const deleted = deleteCommentAtCursor();
     logKeyEvent(keyLabel, deleted ? "delete comment" : "no comment nearby", !deleted);
+    return;
+  }
+  if (event.key === "n" && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    logKeyEvent(keyLabel, "next hunk", false);
+    goToNextHunk();
+    return;
+  }
+  if (event.key === "p" && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    logKeyEvent(keyLabel, "prev hunk", false);
+    goToPrevHunk();
     return;
   }
   if (event.key === "v") {
