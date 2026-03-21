@@ -12,6 +12,7 @@ const state = {
   vim: {
     side: "modified",
     visualAnchor: null,
+    pendingKey: null,
   },
 };
 
@@ -518,6 +519,161 @@ function toggleFocusedSide() {
   focusSide(current === "original" ? "modified" : "original");
 }
 
+function goToBeginning() {
+  const side = inferActiveSide();
+  state.vim.side = side;
+  const editor = getEditorBySide(side);
+  if (!editor || !monacoApi) return;
+
+  state.vim.visualAnchor = null;
+  editor.setPosition({ lineNumber: 1, column: 1 });
+  editor.setSelection(new monacoApi.Selection(1, 1, 1, 1));
+  editor.revealLine(1);
+  editor.focus();
+}
+
+function goToEnd() {
+  const side = inferActiveSide();
+  state.vim.side = side;
+  const editor = getEditorBySide(side);
+  if (!editor || !monacoApi) return;
+
+  const lineCount = editor.getModel()?.getLineCount?.() ?? 1;
+  state.vim.visualAnchor = null;
+  editor.setPosition({ lineNumber: lineCount, column: 1 });
+  editor.setSelection(new monacoApi.Selection(lineCount, 1, lineCount, 1));
+  editor.revealLine(lineCount);
+  editor.focus();
+}
+
+function goToNextHunk() {
+  if (!diffEditor) return;
+  const changes = diffEditor.getLineChanges() || [];
+  if (changes.length === 0) return;
+
+  const side = inferActiveSide();
+  state.vim.side = side;
+  const editor = getEditorBySide(side);
+  if (!editor) return;
+
+  const line = currentLine(editor);
+  for (const change of changes) {
+    const hunkLine = side === "original"
+      ? (change.originalStartLineNumber ?? 1)
+      : (change.modifiedStartLineNumber ?? 1);
+    if (hunkLine > line) {
+      state.vim.visualAnchor = null;
+      editor.setPosition({ lineNumber: hunkLine, column: 1 });
+      editor.setSelection(new monacoApi.Selection(hunkLine, 1, hunkLine, 1));
+      editor.revealLineInCenter(hunkLine);
+      editor.focus();
+      return;
+    }
+  }
+
+  const first = changes[0];
+  const firstLine = side === "original"
+    ? (first.originalStartLineNumber ?? 1)
+    : (first.modifiedStartLineNumber ?? 1);
+  state.vim.visualAnchor = null;
+  editor.setPosition({ lineNumber: firstLine, column: 1 });
+  editor.setSelection(new monacoApi.Selection(firstLine, 1, firstLine, 1));
+  editor.revealLineInCenter(firstLine);
+  editor.focus();
+}
+
+function goToPrevHunk() {
+  if (!diffEditor) return;
+  const changes = diffEditor.getLineChanges() || [];
+  if (changes.length === 0) return;
+
+  const side = inferActiveSide();
+  state.vim.side = side;
+  const editor = getEditorBySide(side);
+  if (!editor) return;
+
+  const line = currentLine(editor);
+  for (let i = changes.length - 1; i >= 0; i--) {
+    const change = changes[i];
+    const hunkLine = side === "original"
+      ? (change.originalStartLineNumber ?? 1)
+      : (change.modifiedStartLineNumber ?? 1);
+    if (hunkLine < line) {
+      state.vim.visualAnchor = null;
+      editor.setPosition({ lineNumber: hunkLine, column: 1 });
+      editor.setSelection(new monacoApi.Selection(hunkLine, 1, hunkLine, 1));
+      editor.revealLineInCenter(hunkLine);
+      editor.focus();
+      return;
+    }
+  }
+
+  const last = changes[changes.length - 1];
+  const lastLine = side === "original"
+    ? (last.originalStartLineNumber ?? 1)
+    : (last.modifiedStartLineNumber ?? 1);
+  state.vim.visualAnchor = null;
+  editor.setPosition({ lineNumber: lastLine, column: 1 });
+  editor.setSelection(new monacoApi.Selection(lastLine, 1, lastLine, 1));
+  editor.revealLineInCenter(lastLine);
+  editor.focus();
+}
+
+function switchFile(delta) {
+  const files = reviewData.files;
+  if (files.length === 0) return;
+
+  const currentIndex = files.findIndex((f) => f.id === state.activeFileId);
+  let nextIndex = currentIndex + delta;
+  if (nextIndex < 0) nextIndex = files.length - 1;
+  if (nextIndex >= files.length) nextIndex = 0;
+
+  saveCurrentScrollPosition();
+  state.activeFileId = files[nextIndex].id;
+  state.vim.visualAnchor = null;
+  renderAll({ restoreFileScroll: true });
+}
+
+function showHelpOverlay() {
+  const existing = document.getElementById("vim-help-overlay");
+  if (existing) { existing.remove(); return; }
+
+  const backdrop = document.createElement("div");
+  backdrop.id = "vim-help-overlay";
+  backdrop.className = "review-modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="review-modal-card" style="max-width: 560px;">
+      <div class="mb-4 text-base font-semibold text-white">Keyboard shortcuts</div>
+      <div style="display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 12px;">
+        <span style="color: #facc15; font-family: monospace;">j / k</span><span style="color: #c9d1d9;">Move cursor down / up</span>
+        <span style="color: #facc15; font-family: monospace;">Ctrl-d / Ctrl-u</span><span style="color: #c9d1d9;">Half-page down / up</span>
+        <span style="color: #facc15; font-family: monospace;">gg</span><span style="color: #c9d1d9;">Go to beginning of file</span>
+        <span style="color: #facc15; font-family: monospace;">G</span><span style="color: #c9d1d9;">Go to end of file</span>
+        <span style="color: #facc15; font-family: monospace;">Ctrl-n / ]c</span><span style="color: #c9d1d9;">Next change hunk</span>
+        <span style="color: #facc15; font-family: monospace;">Ctrl-p / [c</span><span style="color: #c9d1d9;">Previous change hunk</span>
+        <span style="color: #facc15; font-family: monospace;">v</span><span style="color: #c9d1d9;">Toggle visual line selection</span>
+        <span style="color: #facc15; font-family: monospace;">a</span><span style="color: #c9d1d9;">Add comment on selection</span>
+        <span style="color: #facc15; font-family: monospace;">Esc</span><span style="color: #c9d1d9;">Cancel selection / delete empty draft</span>
+        <span style="color: #facc15; font-family: monospace;">h / l</span><span style="color: #c9d1d9;">Focus original / modified pane</span>
+        <span style="color: #facc15; font-family: monospace;">Tab</span><span style="color: #c9d1d9;">Toggle focused pane</span>
+        <span style="color: #facc15; font-family: monospace;">J / K</span><span style="color: #c9d1d9;">Next / previous file</span>
+        <span style="color: #facc15; font-family: monospace;">r</span><span style="color: #c9d1d9;">Mark file reviewed</span>
+        <span style="color: #facc15; font-family: monospace;">o</span><span style="color: #c9d1d9;">Overall note</span>
+        <span style="color: #facc15; font-family: monospace;">Enter</span><span style="color: #c9d1d9;">Submit review</span>
+        <span style="color: #facc15; font-family: monospace;">Ctrl-Enter</span><span style="color: #c9d1d9;">Submit review</span>
+        <span style="color: #facc15; font-family: monospace;">q</span><span style="color: #c9d1d9;">Cancel review</span>
+        <span style="color: #facc15; font-family: monospace;">?</span><span style="color: #c9d1d9;">Toggle this help</span>
+      </div>
+      <div class="mt-4 flex justify-end">
+        <button id="vim-help-close" class="cursor-pointer rounded-md border border-review-border bg-review-panel px-4 py-2 text-sm font-medium text-review-text hover:bg-[#21262d]">Close</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.querySelector("#vim-help-close").addEventListener("click", () => backdrop.remove());
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) backdrop.remove(); });
+}
+
 function syncViewZones() {
   clearViewZones();
   if (!diffEditor) return;
@@ -870,14 +1026,69 @@ window.addEventListener("keydown", (event) => {
 
   if (inCommentInput) return;
 
-  if (event.key === "j") {
+  // Handle two-key sequences: gg, ]c, [c
+  if (state.vim.pendingKey != null) {
+    const combo = state.vim.pendingKey + event.key;
+    state.vim.pendingKey = null;
+
+    if (combo === "gg") {
+      event.preventDefault();
+      goToBeginning();
+      return;
+    }
+    if (combo === "]c") {
+      event.preventDefault();
+      goToNextHunk();
+      return;
+    }
+    if (combo === "[c") {
+      event.preventDefault();
+      goToPrevHunk();
+      return;
+    }
+    // Unknown combo — fall through
+  }
+
+  // Start pending sequences
+  if (event.key === "g" && !event.ctrlKey && !event.metaKey) {
+    state.vim.pendingKey = "g";
+    event.preventDefault();
+    return;
+  }
+  if (event.key === "]" && !event.ctrlKey && !event.metaKey) {
+    state.vim.pendingKey = "]";
+    event.preventDefault();
+    return;
+  }
+  if (event.key === "[" && !event.ctrlKey && !event.metaKey) {
+    state.vim.pendingKey = "[";
+    event.preventDefault();
+    return;
+  }
+
+  if (event.key === "G" && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    goToEnd();
+    return;
+  }
+  if (event.key === "j" && !event.shiftKey) {
     event.preventDefault();
     moveCursor(1);
     return;
   }
-  if (event.key === "k") {
+  if (event.key === "k" && !event.shiftKey) {
     event.preventDefault();
     moveCursor(-1);
+    return;
+  }
+  if (event.key === "J") {
+    event.preventDefault();
+    switchFile(1);
+    return;
+  }
+  if (event.key === "K") {
+    event.preventDefault();
+    switchFile(-1);
     return;
   }
   if (event.key === "d" && event.ctrlKey) {
@@ -888,6 +1099,16 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "u" && event.ctrlKey) {
     event.preventDefault();
     moveCursor(-12);
+    return;
+  }
+  if (event.key === "n" && event.ctrlKey) {
+    event.preventDefault();
+    goToNextHunk();
+    return;
+  }
+  if (event.key === "p" && event.ctrlKey) {
+    event.preventDefault();
+    goToPrevHunk();
     return;
   }
   if (event.key === "v") {
@@ -905,14 +1126,34 @@ window.addEventListener("keydown", (event) => {
     toggleFocusedSide();
     return;
   }
-  if (event.key === "h") {
+  if (event.key === "h" && !event.shiftKey) {
     event.preventDefault();
     focusSide("original");
     return;
   }
-  if (event.key === "l") {
+  if (event.key === "l" && !event.shiftKey) {
     event.preventDefault();
     focusSide("modified");
+    return;
+  }
+  if (event.key === "r" && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    toggleReviewedButton.click();
+    return;
+  }
+  if (event.key === "o" && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    showOverallCommentModal();
+    return;
+  }
+  if (event.key === "q" && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    cancelButton.click();
+    return;
+  }
+  if (event.key === "?") {
+    event.preventDefault();
+    showHelpOverlay();
     return;
   }
   if (event.key === "Enter") {
@@ -921,6 +1162,8 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key === "Escape") {
+    const helpOverlay = document.getElementById("vim-help-overlay");
+    if (helpOverlay) { helpOverlay.remove(); return; }
     if (deleteLatestEmptyInlineCommentForActiveFile()) {
       event.preventDefault();
       return;
