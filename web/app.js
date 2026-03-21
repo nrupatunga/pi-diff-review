@@ -482,7 +482,10 @@ function moveCursor(delta) {
   const to = clampLine(editor, from + delta);
 
   if (state.vim.visualAnchor != null) {
-    editor.setSelection(new monacoApi.Selection(state.vim.visualAnchor, 1, to, 1));
+    const selStart = Math.min(state.vim.visualAnchor, to);
+    const selEnd = Math.max(state.vim.visualAnchor, to);
+    const selEndCol = editor.getModel()?.getLineMaxColumn?.(selEnd) ?? 1;
+    editor.setSelection(new monacoApi.Selection(selStart, 1, selEnd, selEndCol));
   } else {
     editor.setPosition({ lineNumber: to, column: 1 });
     editor.setSelection(new monacoApi.Selection(to, 1, to, 1));
