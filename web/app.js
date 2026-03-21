@@ -501,6 +501,23 @@ function addCommentFromKeyboard() {
   editor.revealLineInCenter(startLine);
 }
 
+function focusSide(side) {
+  state.vim.side = side;
+  const editor = getEditorBySide(side);
+  if (!editor || !monacoApi) return;
+
+  const line = currentLine(editor);
+  editor.setPosition({ lineNumber: line, column: 1 });
+  editor.setSelection(new monacoApi.Selection(line, 1, line, 1));
+  editor.revealLineInCenter(line);
+  editor.focus();
+}
+
+function toggleFocusedSide() {
+  const current = inferActiveSide();
+  focusSide(current === "original" ? "modified" : "original");
+}
+
 function syncViewZones() {
   clearViewZones();
   if (!diffEditor) return;
@@ -880,6 +897,21 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "a") {
     event.preventDefault();
     addCommentFromKeyboard();
+    return;
+  }
+  if (event.key === "Tab") {
+    event.preventDefault();
+    toggleFocusedSide();
+    return;
+  }
+  if (event.key === "h") {
+    event.preventDefault();
+    focusSide("original");
+    return;
+  }
+  if (event.key === "l") {
+    event.preventDefault();
+    focusSide("modified");
     return;
   }
   if (event.key === "Enter") {
