@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "check": "tsgo --noEmit",
-    "prepare": "husky"
+    "prepare": "husky",
+    "postinstall": "node ./scripts/ensure-glimpse-chromium-backend.mjs"
   },
   "pi": {
     "extensions": [
