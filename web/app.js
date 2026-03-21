@@ -693,6 +693,10 @@ function switchFile(delta) {
   renderAll({ restoreFileScroll: true });
 }
 
+function toggleSidebar() {
+  document.getElementById("app-grid").classList.toggle("sidebar-hidden");
+}
+
 function showHelpOverlay() {
   const existing = document.getElementById("vim-help-overlay");
   if (existing) { existing.remove(); return; }
@@ -721,6 +725,7 @@ function showHelpOverlay() {
         <span style="color: #facc15; font-family: monospace;">o</span><span style="color: #c9d1d9;">Overall note</span>
         <span style="color: #facc15; font-family: monospace;">Enter</span><span style="color: #c9d1d9;">Submit review</span>
         <span style="color: #facc15; font-family: monospace;">Ctrl-Enter</span><span style="color: #c9d1d9;">Submit review</span>
+        <span style="color: #facc15; font-family: monospace;">b</span><span style="color: #c9d1d9;">Toggle sidebar</span>
         <span style="color: #facc15; font-family: monospace;">q</span><span style="color: #c9d1d9;">Cancel review</span>
         <span style="color: #facc15; font-family: monospace;">?</span><span style="color: #c9d1d9;">Toggle this help</span>
       </div>
@@ -1310,6 +1315,12 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     logKeyEvent(keyLabel, "cancel review", false);
     cancelButton.click();
+    return;
+  }
+  if (event.key === "b" && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    logKeyEvent(keyLabel, "toggle sidebar", false);
+    toggleSidebar();
     return;
   }
   if (event.key === "?") {

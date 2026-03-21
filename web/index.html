@@ -24,6 +24,26 @@
     font-size: 12px;
   }
 
+  .app-grid {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-rows: 56px minmax(0, 1fr);
+    height: 100%;
+    width: 100%;
+  }
+
+  .app-grid.sidebar-hidden {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-grid .app-header {
+    grid-column: 1 / -1;
+  }
+
+  .app-grid.sidebar-hidden .app-sidebar {
+    display: none;
+  }
+
   .scrollbar-thin::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -185,8 +205,8 @@
 </style>
 </head>
 <body class="h-full overflow-hidden bg-review-bg text-review-text antialiased">
-<div class="grid h-full w-full grid-cols-[280px_minmax(0,1fr)] grid-rows-[56px_minmax(0,1fr)]">
-  <div class="col-span-2 flex items-center justify-between gap-4 border-b border-review-border bg-[#010409] px-4 py-3">
+<div id="app-grid" class="app-grid">
+  <div class="app-header flex items-center justify-between gap-4 border-b border-review-border bg-[#010409] px-4 py-3">
     <div class="min-w-0">
       <div class="text-[15px] font-semibold text-white">Diff review</div>
       <div id="repo-root" class="truncate text-[11px] text-review-muted"></div>
@@ -199,7 +219,7 @@
     </div>
   </div>
 
-  <aside class="flex min-h-0 flex-col border-r border-review-border bg-[#0d1117]">
+  <aside class="app-sidebar flex min-h-0 flex-col border-r border-review-border bg-[#0d1117]">
     <div class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-review-muted">Changed files</div>
     <div id="file-tree" class="scrollbar-thin min-h-0 flex-1 overflow-auto px-2 pb-2"></div>
   </aside>
