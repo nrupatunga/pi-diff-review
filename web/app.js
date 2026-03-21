@@ -855,8 +855,9 @@ window.addEventListener("keydown", (event) => {
   const target = event.target;
   const isElement = target instanceof HTMLElement;
   const inMonaco = isElement && target.closest(".monaco-editor") != null;
+  const isMonacoHiddenInput = isElement && target.classList.contains("inputarea");
   const inCommentInput = isElement && (
-    (target.tagName === "TEXTAREA" && !inMonaco) ||
+    (target.tagName === "TEXTAREA" && !isMonacoHiddenInput) ||
     target.tagName === "INPUT" ||
     (target.isContentEditable && !inMonaco)
   );
