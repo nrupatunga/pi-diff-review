@@ -401,6 +401,44 @@ function deleteLatestEmptyInlineCommentForActiveFile() {
   return false;
 }
 
+function deleteCommentAtCursor() {
+  const file = activeFile();
+  if (!file || !monacoApi) return false;
+
+  const side = inferActiveSide();
+  const editor = getEditorBySide(side);
+  if (!editor) return false;
+
+  const line = currentLine(editor);
+  let bestIdx = -1;
+  let bestDist = Infinity;
+
+  for (let i = 0; i < state.comments.length; i++) {
+    const c = state.comments[i];
+    if (c.fileId !== file.id || c.side !== side || c.side === "file") continue;
+    const start = c.startLine ?? 0;
+    const end = c.endLine ?? start;
+    if (line >= start && line <= end) {
+      bestIdx = i;
+      bestDist = 0;
+      break;
+    }
+    const dist = Math.min(Math.abs(line - start), Math.abs(line - end));
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIdx = i;
+    }
+  }
+
+  if (bestIdx >= 0 && bestDist <= 3) {
+    state.comments.splice(bestIdx, 1);
+    updateCommentsUI();
+    return true;
+  }
+
+  return false;
+}
+
 function getEditorBySide(side) {
   if (!diffEditor) return null;
   return side === "original" ? diffEditor.getOriginalEditor() : diffEditor.getModifiedEditor();
@@ -674,6 +712,7 @@ function showHelpOverlay() {
         <span style="color: #facc15; font-family: monospace;">Ctrl-p / [c</span><span style="color: #c9d1d9;">Previous change hunk</span>
         <span style="color: #facc15; font-family: monospace;">v</span><span style="color: #c9d1d9;">Toggle visual line selection</span>
         <span style="color: #facc15; font-family: monospace;">a</span><span style="color: #c9d1d9;">Add comment on selection</span>
+        <span style="color: #facc15; font-family: monospace;">dd / x</span><span style="color: #c9d1d9;">Delete comment at cursor</span>
         <span style="color: #facc15; font-family: monospace;">Esc</span><span style="color: #c9d1d9;">Cancel selection / delete empty draft</span>
         <span style="color: #facc15; font-family: monospace;">h / l</span><span style="color: #c9d1d9;">Focus original / modified pane</span>
         <span style="color: #facc15; font-family: monospace;">Tab</span><span style="color: #c9d1d9;">Toggle focused pane</span>
@@ -1096,10 +1135,7 @@ window.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (inCommentInput) {
-    logKeyEvent(keyLabel, "passed to input", true);
-    return;
-  }
+  if (inCommentInput) return;
 
   // Handle two-key sequences: gg, ]c, [c
   if (state.vim.pendingKey != null) {
@@ -1110,6 +1146,12 @@ window.addEventListener("keydown", (event) => {
       event.preventDefault();
       logKeyEvent(combo, "go to beginning", false);
       goToBeginning();
+      return;
+    }
+    if (combo === "dd") {
+      event.preventDefault();
+      const deleted = deleteCommentAtCursor();
+      logKeyEvent(combo, deleted ? "delete comment" : "no comment nearby", !deleted);
       return;
     }
     if (combo === "]c") {
@@ -1131,6 +1173,12 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "g" && !event.ctrlKey && !event.metaKey) {
     state.vim.pendingKey = "g";
     logKeyEvent(keyLabel, "pending: g...", false);
+    event.preventDefault();
+    return;
+  }
+  if (event.key === "d" && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+    state.vim.pendingKey = "d";
+    logKeyEvent(keyLabel, "pending: d...", false);
     event.preventDefault();
     return;
   }
@@ -1196,6 +1244,12 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     logKeyEvent(keyLabel, "prev hunk", false);
     goToPrevHunk();
+    return;
+  }
+  if (event.key === "x" && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    const deleted = deleteCommentAtCursor();
+    logKeyEvent(keyLabel, deleted ? "delete comment" : "no comment nearby", !deleted);
     return;
   }
   if (event.key === "v") {
