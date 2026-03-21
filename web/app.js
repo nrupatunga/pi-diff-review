@@ -1057,6 +1057,14 @@ function setupMonaco() {
     createGlyphHoverActions(diffEditor.getOriginalEditor(), "original");
     createGlyphHoverActions(diffEditor.getModifiedEditor(), "modified");
 
+    // Register y keybinding directly in Monaco to bypass its internal key handling
+    [diffEditor.getOriginalEditor(), diffEditor.getModifiedEditor()].forEach((ed) => {
+      ed.addCommand(monacoApi.KeyCode.KeyY, () => {
+        logKeyEvent("y", "yank selection (monaco)", false);
+        yankSelection();
+      });
+    });
+
     if (typeof ResizeObserver !== "undefined") {
       editorResizeObserver = new ResizeObserver(() => {
         layoutEditor();
@@ -1325,6 +1333,8 @@ window.addEventListener("keydown", (event) => {
   }
   if (event.key === "y" && !event.ctrlKey && !event.metaKey) {
     event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
     logKeyEvent(keyLabel, "yank selection", false);
     yankSelection();
     return;
