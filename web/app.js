@@ -696,16 +696,28 @@ function switchFile(delta) {
 
 function toggleSidebar() {
   state.sidebarVisible = !state.sidebarVisible;
-  const grid = document.querySelector(".grid");
+  const grid = document.getElementById("app-grid");
+  const header = document.getElementById("app-header");
   const aside = document.querySelector("aside");
+
   if (state.sidebarVisible) {
-    grid.style.gridTemplateColumns = "280px minmax(0, 1fr)";
     aside.style.display = "";
+    grid.className = "grid h-full w-full grid-cols-[280px_minmax(0,1fr)] grid-rows-[56px_minmax(0,1fr)]";
+    header.className = header.className.replace("col-span-1", "col-span-2");
+    if (!header.className.includes("col-span-2")) {
+      header.className = header.className + " col-span-2";
+    }
   } else {
-    grid.style.gridTemplateColumns = "0px minmax(0, 1fr)";
     aside.style.display = "none";
+    grid.className = "grid h-full w-full grid-cols-[minmax(0,1fr)] grid-rows-[56px_minmax(0,1fr)]";
+    header.className = header.className.replace("col-span-2", "col-span-1");
   }
-  requestAnimationFrame(layoutEditor);
+
+  requestAnimationFrame(() => {
+    layoutEditor();
+    setTimeout(layoutEditor, 100);
+    setTimeout(layoutEditor, 300);
+  });
 }
 
 function showHelpOverlay() {
