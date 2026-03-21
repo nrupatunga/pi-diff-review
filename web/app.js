@@ -799,10 +799,12 @@ setupMonaco();
 
 window.addEventListener("keydown", (event) => {
   const target = event.target;
-  const inInput = target instanceof HTMLElement && (
-    target.tagName === "TEXTAREA" ||
+  const isElement = target instanceof HTMLElement;
+  const inMonaco = isElement && target.closest(".monaco-editor") != null;
+  const inCommentInput = isElement && (
+    (target.tagName === "TEXTAREA" && !inMonaco) ||
     target.tagName === "INPUT" ||
-    target.isContentEditable
+    (target.isContentEditable && !inMonaco)
   );
 
   if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
@@ -811,7 +813,7 @@ window.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (inInput) return;
+  if (inCommentInput) return;
 
   if (event.key === "j") {
     event.preventDefault();
@@ -851,4 +853,4 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     state.vim.visualAnchor = null;
   }
-});
+}, true);
