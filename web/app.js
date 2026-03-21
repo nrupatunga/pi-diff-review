@@ -366,6 +366,11 @@ function renderCommentDOM(comment, onDelete) {
     comment.body = textarea.value;
   });
   textarea.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onDelete();
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       textarea.blur();
@@ -376,6 +381,23 @@ function renderCommentDOM(comment, onDelete) {
     setTimeout(() => textarea.focus(), 50);
   }
   return container;
+}
+
+function deleteLatestEmptyInlineCommentForActiveFile() {
+  const file = activeFile();
+  if (!file) return false;
+
+  for (let i = state.comments.length - 1; i >= 0; i--) {
+    const comment = state.comments[i];
+    if (comment.fileId !== file.id) continue;
+    if (comment.side === "file") continue;
+    if ((comment.body || "").trim().length > 0) continue;
+    state.comments.splice(i, 1);
+    updateCommentsUI();
+    return true;
+  }
+
+  return false;
 }
 
 function getEditorBySide(side) {
@@ -700,6 +722,7 @@ function setupMonaco() {
       rules: [],
       colors: {
         "editor.background": "#0d1117",
+        "editorCursor.foreground": "#58a6ff",
         "diffEditor.insertedTextBackground": "#2ea04326",
         "diffEditor.removedTextBackground": "#f8514926",
       }
@@ -721,8 +744,22 @@ function setupMonaco() {
       lineDecorationsWidth: 10,
       overviewRulerBorder: false,
       wordWrap: "on",
+      cursorStyle: "block",
+      cursorBlinking: "solid",
+      renderLineHighlight: "all",
       fontFamily: "Typestar OCR, OCR A Std, OCR A Extended, JetBrains Mono, Fira Code, monospace",
       fontSize: 12,
+    });
+
+    diffEditor.getOriginalEditor().updateOptions({
+      cursorStyle: "block",
+      cursorBlinking: "solid",
+      renderLineHighlight: "all",
+    });
+    diffEditor.getModifiedEditor().updateOptions({
+      cursorStyle: "block",
+      cursorBlinking: "solid",
+      renderLineHighlight: "all",
     });
 
     createGlyphHoverActions(diffEditor.getOriginalEditor(), "original");
@@ -851,6 +888,10 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key === "Escape") {
+    if (deleteLatestEmptyInlineCommentForActiveFile()) {
+      event.preventDefault();
+      return;
+    }
     state.vim.visualAnchor = null;
   }
 }, true);
