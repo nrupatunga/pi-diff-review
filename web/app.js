@@ -345,7 +345,7 @@ function renderCommentDOM(comment, onDelete) {
   container.className = "view-zone-container";
   const title = comment.side === "file"
     ? "File comment"
-    : `${comment.side === "original" ? "Original" : "Modified"} line ${comment.startLine}`;
+    : `${comment.side === "original" ? "Original" : "Modified"} line ${comment.startLine}${comment.endLine != null && comment.endLine !== comment.startLine ? `-${comment.endLine}` : ""}`;
 
   container.innerHTML = `
     <div class="mb-2 flex items-center justify-between gap-3">
@@ -386,7 +386,7 @@ function syncViewZones() {
     editor.changeViewZones((accessor) => {
       const lineCount = typeof item.body === "string" && item.body.length > 0 ? item.body.split("\n").length : 1;
       const id = accessor.addZone({
-        afterLineNumber: item.startLine,
+        afterLineNumber: item.endLine ?? item.startLine,
         heightInPx: Math.max(150, lineCount * 22 + 86),
         domNode,
       });
@@ -403,8 +403,9 @@ function updateDecorations() {
   const modifiedRanges = [];
 
   for (const comment of comments) {
+    const endLine = comment.endLine != null ? comment.endLine : comment.startLine;
     const range = {
-      range: new monacoApi.Range(comment.startLine, 1, comment.startLine, 1),
+      range: new monacoApi.Range(comment.startLine, 1, endLine, 1),
       options: {
         isWholeLine: true,
         className: comment.side === "original" ? "review-comment-line-original" : "review-comment-line-modified",
@@ -517,16 +518,29 @@ function createGlyphHoverActions(editor, side) {
   function openDraftAtLine(line) {
     const file = activeFile();
     if (!file) return;
+
+    let startLine = line;
+    let endLine = line;
+    const selection = editor.getSelection();
+    if (selection && !selection.isEmpty()) {
+      const selStart = Math.min(selection.startLineNumber, selection.endLineNumber);
+      const selEnd = Math.max(selection.startLineNumber, selection.endLineNumber);
+      if (line >= selStart && line <= selEnd) {
+        startLine = selStart;
+        endLine = selEnd;
+      }
+    }
+
     state.comments.push({
       id: `${Date.now()}:${Math.random().toString(16).slice(2)}`,
       fileId: file.id,
       side,
-      startLine: line,
-      endLine: line,
+      startLine,
+      endLine,
       body: "",
     });
     updateCommentsUI();
-    editor.revealLineInCenter(line);
+    editor.revealLineInCenter(startLine);
   }
 
   editor.onMouseMove((event) => {
