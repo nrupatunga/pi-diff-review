@@ -41,6 +41,8 @@ let originalDecorations = [];
 let modifiedDecorations = [];
 let activeViewZones = [];
 let editorResizeObserver = null;
+let viewportResizeFrame = null;
+let appliedMonacoFontSize = null;
 
 function saveCurrentScrollPosition() {
   if (!diffEditor || !state.activeFileId) return;
@@ -117,6 +119,38 @@ function escapeHtml(value) {
     .replace(/\"/g, "&quot;");
 }
 
+// Scale the review UI and Monaco editor with the available viewport.
+function getResponsiveFontSize() {
+  const width = window.innerWidth || document.documentElement.clientWidth || 1440;
+  const height = window.innerHeight || document.documentElement.clientHeight || 900;
+  const effectiveWidth = Math.min(width, height * 1.6);
+  return Math.max(10, Math.min(13, 9 + effectiveWidth / 480));
+}
+
+function applyResponsiveFontSize() {
+  const fontSize = Math.round(getResponsiveFontSize() * 100) / 100;
+  document.documentElement.style.setProperty("--review-root-font-size", `${fontSize}px`);
+
+  if (diffEditor && monacoApi) {
+    const monacoFontSize = Math.round(fontSize);
+    if (appliedMonacoFontSize !== monacoFontSize) {
+      appliedMonacoFontSize = monacoFontSize;
+      diffEditor.updateOptions({ fontSize: monacoFontSize });
+      diffEditor.getOriginalEditor().updateOptions({ fontSize: monacoFontSize });
+      diffEditor.getModifiedEditor().updateOptions({ fontSize: monacoFontSize });
+    }
+  }
+}
+
+function syncResponsiveLayout() {
+  if (viewportResizeFrame != null) return;
+  viewportResizeFrame = requestAnimationFrame(() => {
+    viewportResizeFrame = null;
+    applyResponsiveFontSize();
+    layoutEditor();
+  });
+}
+
 function statusLabel(status) {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
@@ -178,7 +212,7 @@ function renderTreeNode(node, depth) {
       const collapsed = state.collapsedDirs[child.path] === true;
       const row = document.createElement("button");
       row.type = "button";
-      row.className = "group flex w-full items-center gap-1.5 px-2 py-1 text-left text-[11px] text-[#c9d1d9] hover:bg-[#21262d]";
+      row.className = "group flex w-full items-center gap-1.5 px-2 py-1 text-left text-[0.92rem] text-[#c9d1d9] hover:bg-[#21262d]";
       row.style.paddingLeft = `${depth * indentPx + 8}px`;
       row.innerHTML = `
         <svg class="h-4 w-4 shrink-0 text-[#8b949e] transition-transform ${collapsed ? "-rotate-90" : ""}" viewBox="0 0 16 16" fill="currentColor">
@@ -203,17 +237,17 @@ function renderTreeNode(node, depth) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = [
-      "group flex w-full items-center justify-between gap-2 px-2 py-1 text-left text-[11px]",
+      "group flex w-full items-center justify-between gap-2 px-2 py-1 text-left text-[0.92rem]",
       file.id === state.activeFileId ? "bg-[#373e47] text-white" : reviewed ? "text-[#c9d1d9] hover:bg-[#21262d]" : "text-[#8b949e] hover:bg-[#21262d] hover:text-[#c9d1d9]",
     ].join(" ");
     button.style.paddingLeft = `${(depth * indentPx) + 26}px`;
     button.innerHTML = `
       <span class="flex min-w-0 items-center gap-1.5 truncate ${file.id === state.activeFileId ? "font-medium" : ""}">
-        <span class="shrink-0 text-[10px] ${reviewed ? "text-[#3fb950]" : "text-transparent"}">●</span>
+        <span class="shrink-0 text-[0.83rem] ${reviewed ? "text-[#3fb950]" : "text-transparent"}">●</span>
         <span class="truncate">${escapeHtml(child.name)}</span>
       </span>
       <span class="flex shrink-0 items-center gap-1.5">
-        ${count > 0 ? `<span class="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#1f2937] px-1 text-[10px] font-medium text-[#c9d1d9]">${count}</span>` : ""}
+        ${count > 0 ? `<span class="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#1f2937] px-1 text-[0.83rem] font-medium text-[#c9d1d9]">${count}</span>` : ""}
         <span class="font-medium ${statusBadgeClass(file.status)}">${escapeHtml(statusLabel(file.status).charAt(0))}</span>
       </span>
     `;
@@ -766,7 +800,7 @@ function showHelpOverlay() {
   backdrop.innerHTML = `
     <div class="review-modal-card" style="max-width: 560px;">
       <div class="mb-4 text-base font-semibold text-white">Keyboard shortcuts</div>
-      <div style="display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 12px;">
+      <div style="display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 1rem;">
         <span style="color: #facc15; font-family: monospace;">j / k</span><span style="color: #c9d1d9;">Move cursor down / up</span>
         <span style="color: #facc15; font-family: monospace;">Ctrl-d / Ctrl-u</span><span style="color: #c9d1d9;">Half-page down / up</span>
         <span style="color: #facc15; font-family: monospace;">gg</span><span style="color: #c9d1d9;">Go to beginning of file</span>
@@ -1046,7 +1080,7 @@ function setupMonaco() {
       cursorBlinking: "solid",
       renderLineHighlight: "all",
       fontFamily: "Typestar OCR, OCR A Std, OCR A Extended, JetBrains Mono, Fira Code, monospace",
-      fontSize: 12,
+      fontSize: Math.round(getResponsiveFontSize()),
     });
 
     diffEditor.getOriginalEditor().updateOptions({
@@ -1059,6 +1093,8 @@ function setupMonaco() {
       cursorBlinking: "solid",
       renderLineHighlight: "all",
     });
+
+    applyResponsiveFontSize();
 
     createGlyphHoverActions(diffEditor.getOriginalEditor(), "original");
     createGlyphHoverActions(diffEditor.getModifiedEditor(), "modified");
@@ -1073,7 +1109,7 @@ function setupMonaco() {
 
     if (typeof ResizeObserver !== "undefined") {
       editorResizeObserver = new ResizeObserver(() => {
-        layoutEditor();
+        syncResponsiveLayout();
       });
       editorResizeObserver.observe(editorContainerEl);
     }
@@ -1136,9 +1172,11 @@ toggleReviewedButton.addEventListener("click", () => {
   renderTree();
 });
 
+applyResponsiveFontSize();
 renderTree();
 renderFileComments();
 setupMonaco();
+window.addEventListener("resize", syncResponsiveLayout);
 
 const keyDebugOverlay = document.getElementById("key-debug-overlay");
 const keyDebugLog = document.getElementById("key-debug-log");
