@@ -119,12 +119,17 @@ function escapeHtml(value) {
     .replace(/\"/g, "&quot;");
 }
 
-// Scale the review UI and Monaco editor with the available viewport.
+// Scale the review UI and Monaco editor from the physical screen size.
 function getResponsiveFontSize() {
-  const width = window.innerWidth || document.documentElement.clientWidth || 1440;
-  const height = window.innerHeight || document.documentElement.clientHeight || 900;
-  const effectiveWidth = Math.min(width, height * 1.6);
-  return Math.max(10, Math.min(13, 9 + effectiveWidth / 480));
+  const screenWidth = window.screen?.width || window.innerWidth || 1440;
+  const screenHeight = window.screen?.height || window.innerHeight || 900;
+  const deviceScale = window.devicePixelRatio || 1;
+  const physicalWidth = screenWidth / deviceScale;
+  const physicalHeight = screenHeight / deviceScale;
+  const shortSide = Math.min(physicalWidth, physicalHeight);
+  const longSide = Math.max(physicalWidth, physicalHeight);
+  const size = 16.4 - shortSide / 650 - longSide / 2600;
+  return Math.max(12.75, Math.min(15.5, size));
 }
 
 function applyResponsiveFontSize() {
@@ -542,6 +547,41 @@ function toggleVisualMode() {
   }
 }
 
+function selectCurrentHunk() {
+  if (!diffEditor || !monacoApi) return false;
+
+  const side = inferActiveSide();
+  state.vim.side = side;
+  const editor = getEditorBySide(side);
+  if (!editor) return false;
+
+  const changes = diffEditor.getLineChanges() || [];
+  if (changes.length === 0) return false;
+
+  const line = currentLine(editor);
+  for (const change of changes) {
+    const startLine = side === "original"
+      ? (change.originalStartLineNumber ?? 1)
+      : (change.modifiedStartLineNumber ?? 1);
+    const endLine = side === "original"
+      ? (change.originalEndLineNumber ?? startLine)
+      : (change.modifiedEndLineNumber ?? startLine);
+    const normalizedStart = Math.max(1, Math.min(startLine, endLine));
+    const normalizedEnd = Math.max(normalizedStart, Math.max(startLine, endLine));
+
+    if (line < normalizedStart || line > normalizedEnd) continue;
+
+    const endCol = editor.getModel()?.getLineMaxColumn(normalizedEnd) ?? 1;
+    editor.setSelection(new monacoApi.Selection(normalizedStart, 1, normalizedEnd, endCol));
+    editor.revealLineInCenter(normalizedStart);
+    editor.focus();
+    state.vim.visualAnchor = normalizedStart;
+    return true;
+  }
+
+  return false;
+}
+
 function flashYankRange(editor, startLine, endLine) {
   if (!monacoApi) return;
   const decs = editor.deltaDecorations([], [{
@@ -807,12 +847,13 @@ function showHelpOverlay() {
         <span style="color: #facc15; font-family: monospace;">G</span><span style="color: #c9d1d9;">Go to end of file</span>
         <span style="color: #facc15; font-family: monospace;">n / Ctrl-n / ]c</span><span style="color: #c9d1d9;">Next change hunk</span>
         <span style="color: #facc15; font-family: monospace;">p / Ctrl-p / [c</span><span style="color: #c9d1d9;">Previous change hunk</span>
-        <span style="color: #facc15; font-family: monospace;">v</span><span style="color: #c9d1d9;">Toggle visual line selection</span>
+        <span style="color: #facc15; font-family: monospace;">v</span><span style="color: #c9d1d9;">Start visual line selection</span>
+        <span style="color: #facc15; font-family: monospace;">s</span><span style="color: #c9d1d9;">Select whole hunk from visual mode</span>
         <span style="color: #facc15; font-family: monospace;">a</span><span style="color: #c9d1d9;">Add comment on selection</span>
         <span style="color: #facc15; font-family: monospace;">y</span><span style="color: #c9d1d9;">Yank (copy) selection to clipboard</span>
         <span style="color: #facc15; font-family: monospace;">dd / x</span><span style="color: #c9d1d9;">Delete comment at cursor</span>
         <span style="color: #facc15; font-family: monospace;">Esc</span><span style="color: #c9d1d9;">Cancel selection / delete empty draft</span>
-        <span style="color: #facc15; font-family: monospace;">h / l</span><span style="color: #c9d1d9;">Focus original / modified pane</span>
+        <span style="color: #facc15; font-family: monospace;">Ctrl-h / Ctrl-l</span><span style="color: #c9d1d9;">Focus original / modified pane</span>
         <span style="color: #facc15; font-family: monospace;">Tab</span><span style="color: #c9d1d9;">Toggle focused pane</span>
         <span style="color: #facc15; font-family: monospace;">J / K</span><span style="color: #c9d1d9;">Next / previous file</span>
         <span style="color: #facc15; font-family: monospace;">r</span><span style="color: #c9d1d9;">Mark file reviewed</span>
@@ -915,6 +956,8 @@ function mountFile(options = {}) {
   if (!diffEditor || !monacoApi) return;
   const file = activeFile();
   if (!file) return;
+
+  state.vim.visualAnchor = null;
 
   const preserveScroll = options.preserveScroll === true;
   const scrollState = preserveScroll ? captureScrollState() : null;
@@ -1055,6 +1098,10 @@ function setupMonaco() {
       colors: {
         "editor.background": "#0d1117",
         "editorCursor.foreground": "#facc15",
+        "editor.selectionBackground": "#58a6ff66",
+        "editor.inactiveSelectionBackground": "#58a6ff33",
+        "editor.selectionHighlightBackground": "#58a6ff2a",
+        "editor.lineHighlightBackground": "#58a6ff14",
         "diffEditor.insertedTextBackground": "#2ea04326",
         "diffEditor.removedTextBackground": "#f8514926",
       }
@@ -1389,6 +1436,12 @@ window.addEventListener("keydown", (event) => {
     toggleVisualMode();
     return;
   }
+  if (event.key === "s" && state.vim.visualAnchor != null) {
+    event.preventDefault();
+    const selected = selectCurrentHunk();
+    logKeyEvent(keyLabel, selected ? "select hunk" : "no hunk here", !selected);
+    return;
+  }
   if (event.key === "a") {
     event.preventDefault();
     logKeyEvent(keyLabel, "add comment", false);
@@ -1401,14 +1454,18 @@ window.addEventListener("keydown", (event) => {
     toggleFocusedSide();
     return;
   }
-  if (event.key === "h" && !event.shiftKey) {
+  if (event.ctrlKey && event.key === "h") {
     event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
     logKeyEvent(keyLabel, "focus original", false);
     focusSide("original");
     return;
   }
-  if (event.key === "l" && !event.shiftKey) {
+  if (event.ctrlKey && event.key === "l") {
     event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
     logKeyEvent(keyLabel, "focus modified", false);
     focusSide("modified");
     return;
