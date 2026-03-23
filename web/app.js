@@ -128,8 +128,8 @@ function getResponsiveFontSize() {
   const physicalHeight = screenHeight / deviceScale;
   const shortSide = Math.min(physicalWidth, physicalHeight);
   const longSide = Math.max(physicalWidth, physicalHeight);
-  const size = 16.4 - shortSide / 650 - longSide / 2600;
-  return Math.max(12.75, Math.min(15.5, size));
+  const size = 14.4 - shortSide / 650 - longSide / 2600;
+  return Math.max(11, Math.min(13, size));
 }
 
 function applyResponsiveFontSize() {
@@ -853,7 +853,7 @@ function showHelpOverlay() {
         <span style="color: #facc15; font-family: monospace;">y</span><span style="color: #c9d1d9;">Yank (copy) selection to clipboard</span>
         <span style="color: #facc15; font-family: monospace;">dd / x</span><span style="color: #c9d1d9;">Delete comment at cursor</span>
         <span style="color: #facc15; font-family: monospace;">Esc</span><span style="color: #c9d1d9;">Cancel selection / delete empty draft</span>
-        <span style="color: #facc15; font-family: monospace;">Ctrl-h / Ctrl-l</span><span style="color: #c9d1d9;">Focus original / modified pane</span>
+        <span style="color: #facc15; font-family: monospace;">h / l</span><span style="color: #c9d1d9;">Focus original / modified pane</span>
         <span style="color: #facc15; font-family: monospace;">Tab</span><span style="color: #c9d1d9;">Toggle focused pane</span>
         <span style="color: #facc15; font-family: monospace;">J / K</span><span style="color: #c9d1d9;">Next / previous file</span>
         <span style="color: #facc15; font-family: monospace;">r</span><span style="color: #c9d1d9;">Mark file reviewed</span>
@@ -1454,18 +1454,14 @@ window.addEventListener("keydown", (event) => {
     toggleFocusedSide();
     return;
   }
-  if (event.ctrlKey && event.key === "h") {
+  if (event.key === "h" && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
     event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
     logKeyEvent(keyLabel, "focus original", false);
     focusSide("original");
     return;
   }
-  if (event.ctrlKey && event.key === "l") {
+  if (event.key === "l" && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
     event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
     logKeyEvent(keyLabel, "focus modified", false);
     focusSide("modified");
     return;
