@@ -408,13 +408,18 @@ function renderCommentDOM(comment, onDelete) {
   textarea.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       onDelete();
       return;
     }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
+      event.stopPropagation();
       textarea.blur();
+      return;
     }
+    // Block all other keys from bubbling to vim handler while typing
+    event.stopPropagation();
   });
   container.querySelector("[data-action='delete']").addEventListener("click", onDelete);
   if (!comment.body) {
@@ -1146,13 +1151,7 @@ function setupMonaco() {
     createGlyphHoverActions(diffEditor.getOriginalEditor(), "original");
     createGlyphHoverActions(diffEditor.getModifiedEditor(), "modified");
 
-    // Register y keybinding directly in Monaco to bypass its internal key handling
-    [diffEditor.getOriginalEditor(), diffEditor.getModifiedEditor()].forEach((ed) => {
-      ed.addCommand(monacoApi.KeyCode.KeyY, () => {
-        logKeyEvent("y", "yank selection (monaco)", false);
-        yankSelection();
-      });
-    });
+
 
     if (typeof ResizeObserver !== "undefined") {
       editorResizeObserver = new ResizeObserver(() => {
