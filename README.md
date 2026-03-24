@@ -1,6 +1,8 @@
 # pi-diff-review
 
 > Forked from [badlogic/pi-diff-review](https://github.com/badlogic/pi-diff-review) with stability fixes, vim keybindings, and UI improvements.
+>
+> ⚠️ This code is purely AI slop. I don't know JavaScript.
 
 Native diff review window for pi, powered by [Glimpse](https://github.com/hazat/glimpse) and Monaco.
 
