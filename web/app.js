@@ -858,7 +858,7 @@ function showHelpOverlay() {
         <span style="color: #facc15; font-family: monospace;">J / K</span><span style="color: #c9d1d9;">Next / previous file</span>
         <span style="color: #facc15; font-family: monospace;">r</span><span style="color: #c9d1d9;">Mark file reviewed</span>
         <span style="color: #facc15; font-family: monospace;">o</span><span style="color: #c9d1d9;">Overall note</span>
-        <span style="color: #facc15; font-family: monospace;">Enter</span><span style="color: #c9d1d9;">Submit review</span>
+        <span style="color: #facc15; font-family: monospace;">Enter</span><span style="color: #c9d1d9;">Submit review (in editor) / confirm (in comment)</span>
         <span style="color: #facc15; font-family: monospace;">Ctrl-Enter</span><span style="color: #c9d1d9;">Submit review</span>
         <span style="color: #facc15; font-family: monospace;">b</span><span style="color: #c9d1d9;">Toggle sidebar</span>
         <span style="color: #facc15; font-family: monospace;">q</span><span style="color: #c9d1d9;">Cancel review</span>
