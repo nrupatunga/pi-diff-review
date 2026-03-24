@@ -1168,6 +1168,14 @@ function setupMonaco() {
     });
 
     mountFile();
+
+    // Focus left pane on startup
+    setTimeout(() => {
+      const orig = diffEditor.getOriginalEditor();
+      orig.setPosition({ lineNumber: 1, column: 1 });
+      orig.focus();
+      state.vim.side = "original";
+    }, 200);
   });
 }
 
