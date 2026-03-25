@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { open, type GlimpseWindow } from "glimpseui";
@@ -118,13 +119,14 @@ export default function (pi: ExtensionAPI) {
     };
   }
 
-  async function reviewDiff(ctx: ExtensionCommandContext): Promise<void> {
+  async function reviewDiff(ctx: ExtensionCommandContext, targetDir?: string): Promise<void> {
     if (activeWindow != null) {
       ctx.ui.notify("A diff review window is already open.", "warning");
       return;
     }
 
-    const { repoRoot, files } = await getDiffReviewFiles(pi, ctx.cwd);
+    const cwd = targetDir ? resolve(ctx.cwd, targetDir) : ctx.cwd;
+    const { repoRoot, files } = await getDiffReviewFiles(pi, cwd);
     if (files.length === 0) {
       ctx.ui.notify("No git diff to review.", "info");
       return;
@@ -224,9 +226,10 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.registerCommand("diff-review", {
-    description: "Open a native diff review window and insert review feedback into the editor",
-    handler: async (_args, ctx) => {
-      await reviewDiff(ctx);
+    description: "Open a native diff review window. Usage: /diff-review [path]",
+    handler: async (args, ctx) => {
+      const targetDir = args.trim().length > 0 ? args.trim() : undefined;
+      await reviewDiff(ctx, targetDir);
     },
   });
 
