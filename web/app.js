@@ -539,6 +539,18 @@ function moveCursor(delta) {
   editor.focus();
 }
 
+function selectCurrentLine() {
+  const side = inferActiveSide();
+  state.vim.side = side;
+  const editor = getEditorBySide(side);
+  if (!editor || !monacoApi) return;
+
+  const line = currentLine(editor);
+  const lineLength = editor.getModel()?.getLineMaxColumn(line) ?? 1;
+  state.vim.visualAnchor = line;
+  editor.setSelection(new monacoApi.Selection(line, 1, line, lineLength));
+}
+
 function toggleVisualMode() {
   const side = inferActiveSide();
   state.vim.side = side;
@@ -853,6 +865,7 @@ function showHelpOverlay() {
         <span style="color: #facc15; font-family: monospace;">n / Ctrl-n / ]c</span><span style="color: #c9d1d9;">Next change hunk</span>
         <span style="color: #facc15; font-family: monospace;">p / Ctrl-p / [c</span><span style="color: #c9d1d9;">Previous change hunk</span>
         <span style="color: #facc15; font-family: monospace;">v</span><span style="color: #c9d1d9;">Start visual line selection</span>
+        <span style="color: #facc15; font-family: monospace;">V</span><span style="color: #c9d1d9;">Select current line</span>
         <span style="color: #facc15; font-family: monospace;">s</span><span style="color: #c9d1d9;">Select whole hunk from visual mode</span>
         <span style="color: #facc15; font-family: monospace;">a</span><span style="color: #c9d1d9;">Add comment on selection</span>
         <span style="color: #facc15; font-family: monospace;">y</span><span style="color: #c9d1d9;">Yank (copy) selection to clipboard</span>
@@ -1435,6 +1448,12 @@ window.addEventListener("keydown", (event) => {
     event.stopImmediatePropagation();
     logKeyEvent(keyLabel, "yank selection", false);
     yankSelection();
+    return;
+  }
+  if (event.key === "V") {
+    event.preventDefault();
+    logKeyEvent(keyLabel, "select current line", false);
+    selectCurrentLine();
     return;
   }
   if (event.key === "v") {
