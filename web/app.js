@@ -270,8 +270,8 @@ function updateToggleButtons() {
   const reviewed = file ? isFileReviewed(file.id) : false;
   toggleReviewedButton.textContent = reviewed ? "Reviewed" : "Mark reviewed";
   toggleReviewedButton.className = reviewed
-    ? "cursor-pointer rounded-md border border-[#2ea043]/40 bg-[#238636]/15 px-3 py-1 text-xs font-medium text-[#3fb950] hover:bg-[#238636]/25"
-    : "cursor-pointer rounded-md border border-review-border bg-review-panel px-3 py-1 text-xs font-medium text-review-text hover:bg-[#21262d]";
+    ? "cursor-pointer rounded-md border border-[#2ea043]/40 bg-[#238636]/15 px-3 py-1 text-sm font-medium text-[#3fb950] hover:bg-[#238636]/25"
+    : "cursor-pointer rounded-md border border-review-border bg-review-panel px-3 py-1 text-sm font-medium text-review-text hover:bg-[#21262d]";
   toggleUnchangedButton.textContent = state.hideUnchanged ? "Show full file" : "Show changed areas only";
   toggleWrapButton.textContent = `Wrap lines: ${state.wrapLines ? "on" : "off"}`;
   submitButton.disabled = false;
@@ -395,8 +395,8 @@ function renderCommentDOM(comment, onDelete) {
 
   container.innerHTML = `
     <div class="mb-2 flex items-center justify-between gap-3">
-      <div class="text-xs font-semibold text-review-text">${escapeHtml(title)}</div>
-      <button data-action="delete" class="cursor-pointer rounded-md border border-transparent bg-transparent px-2 py-1 text-xs font-medium text-review-muted hover:bg-red-500/10 hover:text-red-400">Delete</button>
+      <div class="text-sm font-semibold text-review-text">${escapeHtml(title)}</div>
+      <button data-action="delete" class="cursor-pointer rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-medium text-review-muted hover:bg-red-500/10 hover:text-red-400">Delete</button>
     </div>
     <textarea data-comment-id="${escapeHtml(comment.id)}" class="scrollbar-thin min-h-[76px] w-full resize-y rounded-md border border-review-border bg-[#010409] px-3 py-2 text-sm text-review-text outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Leave a comment"></textarea>
   `;
