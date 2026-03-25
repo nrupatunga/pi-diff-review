@@ -125,7 +125,8 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    const cwd = targetDir ? resolve(ctx.cwd, targetDir) : ctx.cwd;
+    const expanded = targetDir?.startsWith("~") ? targetDir.replace(/^~/, process.env.HOME ?? "") : targetDir;
+    const cwd = expanded ? resolve(ctx.cwd, expanded) : ctx.cwd;
     const { repoRoot, files } = await getDiffReviewFiles(pi, cwd);
     if (files.length === 0) {
       ctx.ui.notify("No git diff to review.", "info");
