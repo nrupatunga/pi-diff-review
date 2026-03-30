@@ -1,8 +1,8 @@
 import { resolve } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth, fuzzyFilter } from "@mariozechner/pi-tui";
 import { open, type GlimpseWindow } from "glimpseui";
-import { getDiffReviewFiles } from "./git.js";
+import { getDiffReviewFiles, listBranches, type BranchCompareOptions } from "./git.js";
 import { composeReviewPrompt } from "./prompt.js";
 import type { ReviewSubmitPayload, ReviewWindowMessage } from "./types.js";
 import { buildReviewHtml } from "./ui.js";
@@ -119,7 +119,154 @@ export default function (pi: ExtensionAPI) {
     };
   }
 
-  async function reviewDiff(ctx: ExtensionCommandContext, targetDir?: string): Promise<void> {
+  function pickBranch(
+    ctx: ExtensionCommandContext,
+    branches: string[],
+    title: string,
+  ): Promise<string | undefined> {
+    const MAX_VISIBLE = 10;
+
+    return ctx.ui.custom<string | undefined>((tui, theme, _kb, done) => {
+      let query = "";
+      let selectedIndex = 0;
+
+      function getFiltered(): string[] {
+        return fuzzyFilter(branches, query, (b) => b);
+      }
+
+      /** Pad a (possibly ANSI-styled) string to exactly `targetWidth` visible columns. */
+      function padVisible(text: string, targetWidth: number): string {
+        const vw = visibleWidth(text);
+        return vw < targetWidth ? text + " ".repeat(targetWidth - vw) : text;
+      }
+
+      function borderedLine(content: string): string {
+        return `${theme.fg("border", "│")}${content}${theme.fg("border", "│")}`;
+      }
+
+      return {
+        render(width: number): string[] {
+          const innerWidth = Math.max(30, width - 2);
+          const borderH = "─".repeat(innerWidth);
+          const lines: string[] = [];
+
+          // Title bar
+          const titleText = ` ${title} `;
+          const titleVW = visibleWidth(titleText);
+          const titlePad = Math.max(0, innerWidth - titleVW);
+          const leftPad = Math.floor(titlePad / 2);
+          const rightPad = titlePad - leftPad;
+          lines.push(
+            theme.fg("border", `╭${"─".repeat(leftPad)}`) +
+            theme.fg("accent", theme.bold(titleText)) +
+            theme.fg("border", `${"─".repeat(rightPad)}╮`),
+          );
+
+          // Search input
+          const searchPrefix = " \uD83D\uDD0D ";
+          const cursor = theme.fg("accent", "▏");
+          const searchContent = `${searchPrefix}${query}${cursor}`;
+          lines.push(borderedLine(padVisible(searchContent, innerWidth)));
+          lines.push(theme.fg("border", `├${borderH}┤`));
+
+          // Filtered branch list
+          const filtered = getFiltered();
+
+          if (filtered.length === 0) {
+            const noMatch = "  No matching branches";
+            lines.push(borderedLine(padVisible(theme.fg("muted", noMatch), innerWidth)));
+          } else {
+            // Scrolling window
+            const startIndex = Math.max(
+              0,
+              Math.min(selectedIndex - Math.floor(MAX_VISIBLE / 2), filtered.length - MAX_VISIBLE),
+            );
+            const endIndex = Math.min(startIndex + MAX_VISIBLE, filtered.length);
+
+            for (let i = startIndex; i < endIndex; i++) {
+              const branch = filtered[i];
+              const isSelected = i === selectedIndex;
+              const prefix = isSelected ? " → " : "   ";
+              const text = truncateToWidth(`${prefix}${branch}`, innerWidth, "...");
+              const styled = isSelected ? theme.fg("accent", theme.bold(text)) : text;
+              lines.push(borderedLine(padVisible(styled, innerWidth)));
+            }
+
+            // Scroll indicator
+            if (filtered.length > MAX_VISIBLE) {
+              const info = `  (${selectedIndex + 1}/${filtered.length})`;
+              lines.push(borderedLine(padVisible(theme.fg("muted", info), innerWidth)));
+            }
+          }
+
+          // Bottom border with hints
+          const hints = " ↑↓ navigate · Enter select · Esc cancel ";
+          const hintsVW = visibleWidth(hints);
+          const hintsPad = Math.max(0, innerWidth - hintsVW);
+          const hLeftPad = Math.floor(hintsPad / 2);
+          const hRightPad = hintsPad - hLeftPad;
+          lines.push(
+            theme.fg("border", `╰${"─".repeat(hLeftPad)}`) +
+            theme.fg("muted", hints) +
+            theme.fg("border", `${"─".repeat(hRightPad)}╯`),
+          );
+
+          return lines;
+        },
+
+        handleInput(data: string): void {
+          if (matchesKey(data, Key.escape)) {
+            done(undefined);
+            return;
+          }
+
+          const filtered = getFiltered();
+
+          if (matchesKey(data, Key.enter)) {
+            const selected = filtered[selectedIndex];
+            done(selected ?? undefined);
+            return;
+          }
+
+          if (matchesKey(data, Key.up)) {
+            selectedIndex = selectedIndex === 0 ? Math.max(0, filtered.length - 1) : selectedIndex - 1;
+            tui.requestRender();
+            return;
+          }
+
+          if (matchesKey(data, Key.down)) {
+            selectedIndex = selectedIndex >= filtered.length - 1 ? 0 : selectedIndex + 1;
+            tui.requestRender();
+            return;
+          }
+
+          if (matchesKey(data, Key.backspace)) {
+            if (query.length > 0) {
+              query = query.slice(0, -1);
+              selectedIndex = 0;
+              tui.requestRender();
+            }
+            return;
+          }
+
+          // Printable characters
+          if (data.length === 1 && data.charCodeAt(0) >= 32 && data.charCodeAt(0) < 127) {
+            query += data;
+            selectedIndex = 0;
+            tui.requestRender();
+          }
+        },
+
+        invalidate(): void {},
+      };
+    });
+  }
+
+  async function reviewDiff(
+    ctx: ExtensionCommandContext,
+    targetDir?: string,
+    branchCompare?: BranchCompareOptions,
+  ): Promise<void> {
     if (activeWindow != null) {
       ctx.ui.notify("A diff review window is already open.", "warning");
       return;
@@ -127,18 +274,21 @@ export default function (pi: ExtensionAPI) {
 
     const expanded = targetDir?.startsWith("~") ? targetDir.replace(/^~/, process.env.HOME ?? "") : targetDir;
     const cwd = expanded ? resolve(ctx.cwd, expanded) : ctx.cwd;
-    const { repoRoot, files } = await getDiffReviewFiles(pi, cwd);
+    const { repoRoot, files } = await getDiffReviewFiles(pi, cwd, branchCompare);
     if (files.length === 0) {
-      ctx.ui.notify("No git diff to review.", "info");
+      ctx.ui.notify("No diff between the specified refs.", "info");
       return;
     }
 
+    const titleSuffix = branchCompare
+      ? ` — ${branchCompare.branch1}..${branchCompare.branch2}`
+      : "";
     const html = buildReviewHtml({ repoRoot, files });
     const window = withSanitizedGlimpseEnv(() =>
       open(html, {
         width: 1440,
         height: 900,
-        title: "pi diff review",
+        title: `pi diff review${titleSuffix}`,
       }),
     );
     activeWindow = window;
@@ -227,10 +377,52 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.registerCommand("diff-review", {
-    description: "Open a native diff review window. Usage: /diff-review [path]",
+    description:
+      "Open a native diff review window. Usage: /diff-review [path] | /diff-review <branch1> <branch2>",
     handler: async (args, ctx) => {
-      const targetDir = args.trim().length > 0 ? args.trim() : undefined;
-      await reviewDiff(ctx, targetDir);
+      const parts = args.trim().split(/\s+/).filter((p) => p.length > 0);
+
+      if (parts.length === 2) {
+        // Two args: branch-to-branch comparison
+        const [branch1, branch2] = parts;
+        await reviewDiff(ctx, undefined, { branch1, branch2 });
+      } else if (parts.length === 1) {
+        // One arg: treat as target directory (original behavior)
+        await reviewDiff(ctx, parts[0]);
+      } else {
+        // No args: working tree vs HEAD (original behavior)
+        await reviewDiff(ctx);
+      }
+    },
+  });
+
+  pi.registerCommand("diff-review-branches", {
+    description: "Pick two branches interactively and open a diff review window.",
+    handler: async (_args, ctx) => {
+      const { branches } = await listBranches(pi, ctx.cwd);
+      if (branches.length === 0) {
+        ctx.ui.notify("No branches found in this repository.", "warning");
+        return;
+      }
+
+      const branch1 = await pickBranch(ctx, branches, "Select base branch (old)");
+      if (branch1 == null) {
+        ctx.ui.notify("Branch selection cancelled.", "info");
+        return;
+      }
+
+      const branch2 = await pickBranch(ctx, branches, "Select compare branch (new)");
+      if (branch2 == null) {
+        ctx.ui.notify("Branch selection cancelled.", "info");
+        return;
+      }
+
+      if (branch1 === branch2) {
+        ctx.ui.notify("Both branches are the same — nothing to diff.", "warning");
+        return;
+      }
+
+      await reviewDiff(ctx, undefined, { branch1, branch2 });
     },
   });
 

@@ -104,23 +104,23 @@ function parseNameStatus(output: string): ChangedPath[] {
   return changes;
 }
 
-async function getHeadContent(pi: ExtensionAPI, repoRoot: string, path: string): Promise<string> {
+async function getRefContent(pi: ExtensionAPI, repoRoot: string, ref: string, path: string): Promise<string> {
   const lowerPath = path.toLowerCase();
   const dot = lowerPath.lastIndexOf(".");
   const ext = dot >= 0 ? lowerPath.slice(dot) : "";
   if (BINARY_EXTENSIONS.has(ext)) {
-    return `/* old content omitted for ${path}: binary extension (${ext}) */`;
+    return `/* content omitted for ${path}: binary extension (${ext}) */`;
   }
 
-  const sizeResult = await pi.exec("git", ["cat-file", "-s", `HEAD:${path}`], { cwd: repoRoot });
+  const sizeResult = await pi.exec("git", ["cat-file", "-s", `${ref}:${path}`], { cwd: repoRoot });
   if (sizeResult.code === 0) {
     const size = Number.parseInt(sizeResult.stdout.trim(), 10);
     if (Number.isFinite(size) && size > MAX_READ_BYTES) {
-      return `/* old content omitted for ${path}: blob is ${size.toLocaleString()} bytes (> ${MAX_READ_BYTES.toLocaleString()} byte read limit) */`;
+      return `/* content omitted for ${path}: blob is ${size.toLocaleString()} bytes (> ${MAX_READ_BYTES.toLocaleString()} byte read limit) */`;
     }
   }
 
-  const result = await pi.exec("git", ["show", `HEAD:${path}`], { cwd: repoRoot });
+  const result = await pi.exec("git", ["show", `${ref}:${path}`], { cwd: repoRoot });
   if (result.code !== 0) {
     return "";
   }
@@ -199,27 +199,73 @@ function shouldIncludeChange(change: ChangedPath): boolean {
   return paths.every((p) => !IGNORED_PREFIXES.some((prefix) => p.startsWith(prefix)));
 }
 
-export async function getDiffReviewFiles(pi: ExtensionAPI, cwd: string): Promise<{ repoRoot: string; files: DiffReviewFile[] }> {
+export async function listBranches(pi: ExtensionAPI, cwd: string): Promise<{ repoRoot: string; branches: string[] }> {
   const repoRoot = await getRepoRoot(pi, cwd);
-  const repositoryHasHead = await hasHead(pi, repoRoot);
+  const output = await runGit(pi, repoRoot, ["branch", "-a", "--format=%(refname:short)", "--sort=-committerdate"]);
+  const branches = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    // skip HEAD pointer aliases like "origin/HEAD"
+    .filter((line) => !line.endsWith("/HEAD"));
+  return { repoRoot, branches };
+}
 
-  const trackedOutput = repositoryHasHead
-    ? await runGit(pi, repoRoot, ["diff", "--find-renames", "-M", "--name-status", "HEAD", "--"])
-    : "";
-  const untrackedOutput = await runGitAllowFailure(pi, repoRoot, ["ls-files", "--others", "--exclude-standard"]);
+export interface BranchCompareOptions {
+  branch1: string;
+  branch2: string;
+}
 
-  const trackedPaths = parseNameStatus(trackedOutput);
-  const untrackedPaths = parseUntrackedPaths(untrackedOutput);
-  const changedPaths = mergeChangedPaths(trackedPaths, untrackedPaths)
-    .filter(shouldIncludeChange)
-    .slice(0, MAX_FILES);
+export async function getDiffReviewFiles(
+  pi: ExtensionAPI,
+  cwd: string,
+  branchCompare?: BranchCompareOptions,
+): Promise<{ repoRoot: string; files: DiffReviewFile[] }> {
+  const repoRoot = await getRepoRoot(pi, cwd);
+
+  let changedPaths: ChangedPath[];
+
+  if (branchCompare != null) {
+    // Branch-to-branch comparison
+    const { branch1, branch2 } = branchCompare;
+    const trackedOutput = await runGit(pi, repoRoot, [
+      "diff", "--find-renames", "-M", "--name-status", branch1, branch2, "--",
+    ]);
+    changedPaths = parseNameStatus(trackedOutput)
+      .filter(shouldIncludeChange)
+      .slice(0, MAX_FILES);
+  } else {
+    // Default: working tree vs HEAD
+    const repositoryHasHead = await hasHead(pi, repoRoot);
+    const trackedOutput = repositoryHasHead
+      ? await runGit(pi, repoRoot, ["diff", "--find-renames", "-M", "--name-status", "HEAD", "--"])
+      : "";
+    const untrackedOutput = await runGitAllowFailure(pi, repoRoot, ["ls-files", "--others", "--exclude-standard"]);
+    const trackedPaths = parseNameStatus(trackedOutput);
+    const untrackedPaths = parseUntrackedPaths(untrackedOutput);
+    changedPaths = mergeChangedPaths(trackedPaths, untrackedPaths)
+      .filter(shouldIncludeChange)
+      .slice(0, MAX_FILES);
+  }
 
   let totalChars = 0;
   const files = await Promise.all(
     changedPaths.map(async (change, index): Promise<DiffReviewFile> => {
       const displayPath = toDisplayPath(change);
-      const rawOldContent = change.oldPath == null ? "" : await getHeadContent(pi, repoRoot, change.oldPath);
-      const rawNewContent = change.newPath == null ? "" : await getWorkingTreeContent(repoRoot, change.newPath);
+
+      let rawOldContent: string;
+      let rawNewContent: string;
+
+      if (branchCompare != null) {
+        // Both sides come from git refs
+        rawOldContent = change.oldPath == null ? "" : await getRefContent(pi, repoRoot, branchCompare.branch1, change.oldPath);
+        rawNewContent = change.newPath == null ? "" : await getRefContent(pi, repoRoot, branchCompare.branch2, change.newPath);
+      } else {
+        // Old from HEAD, new from working tree
+        rawOldContent = change.oldPath == null ? "" : await getRefContent(pi, repoRoot, "HEAD", change.oldPath);
+        rawNewContent = change.newPath == null ? "" : await getWorkingTreeContent(repoRoot, change.newPath);
+      }
+
       let oldContent = sanitizeContent(displayPath, "old", rawOldContent);
       let newContent = sanitizeContent(displayPath, "new", rawNewContent);
 
