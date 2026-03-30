@@ -11,7 +11,43 @@ pi install git:https://github.com/nrupatunga/pi-diff-review
 
 ## Usage
 
-Run `/diff-review` in pi. Press `?` inside the review window for all shortcuts.
+### Review uncommitted changes (default)
+
+```
+/diff-review
+```
+
+Opens a diff review window comparing the working tree against HEAD — same as the upstream behavior.
+
+### Review a different directory
+
+```
+/diff-review ~/other-repo
+```
+
+### Compare two branches directly
+
+```
+/diff-review main feature-branch
+/diff-review origin/main origin/feat/wake-word
+```
+
+Compares any two git refs (branches, tags, commits). The first ref is the base (old), the second is the compare (new).
+
+### Interactive branch picker
+
+```
+/diff-review-branches
+```
+
+Fetches all local and remote branches (sorted by most recent commit) and shows a fuzzy-searchable picker:
+
+1. Type to filter branches — shows top 10 matches
+2. `↑↓` to navigate, `Enter` to select, `Esc` to cancel
+3. Pick the base branch, then the compare branch
+4. Diff review window opens automatically
+
+Press `?` inside the review window for all shortcuts.
 
 **Tip:** Add large/binary files to `.gitignore` before running — the UI loads the full diff payload into memory, so big files will slow it down or crash.
 
@@ -40,6 +76,8 @@ Run `/diff-review` in pi. Press `?` inside the review window for all shortcuts.
 
 ## What changed from upstream
 
+- **Branch-to-branch diff review** — `/diff-review <branch1> <branch2>` to compare any two refs
+- **Interactive branch picker** — `/diff-review-branches` with fuzzy search, scrolling, keyboard navigation
 - Linux stability fixes (env sanitization, missing Glimpse backend, large payload protection)
 - Vim-style keyboard navigation and commenting
 - Block cursor, Typestar OCR font, responsive sizing
