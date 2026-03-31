@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { ChangeStatus, DiffReviewFile } from "./types.js";
+import type { ChangeStatus, DiffReviewFile, DiffReviewFileContents } from "./types.js";
 
 const MAX_FILE_CHARS = 250_000;
 const MAX_TOTAL_CHARS = 2_000_000;
@@ -248,46 +248,36 @@ export async function getDiffReviewFiles(
       .slice(0, MAX_FILES);
   }
 
-  let totalChars = 0;
-  const files = await Promise.all(
-    changedPaths.map(async (change, index): Promise<DiffReviewFile> => {
-      const displayPath = toDisplayPath(change);
-
-      let rawOldContent: string;
-      let rawNewContent: string;
-
-      if (branchCompare != null) {
-        // Both sides come from git refs
-        rawOldContent = change.oldPath == null ? "" : await getRefContent(pi, repoRoot, branchCompare.branch1, change.oldPath);
-        rawNewContent = change.newPath == null ? "" : await getRefContent(pi, repoRoot, branchCompare.branch2, change.newPath);
-      } else {
-        // Old from HEAD, new from working tree
-        rawOldContent = change.oldPath == null ? "" : await getRefContent(pi, repoRoot, "HEAD", change.oldPath);
-        rawNewContent = change.newPath == null ? "" : await getWorkingTreeContent(repoRoot, change.newPath);
-      }
-
-      let oldContent = sanitizeContent(displayPath, "old", rawOldContent);
-      let newContent = sanitizeContent(displayPath, "new", rawNewContent);
-
-      const prospectiveTotal = totalChars + oldContent.length + newContent.length;
-      if (prospectiveTotal > MAX_TOTAL_CHARS) {
-        oldContent = `/* old content omitted for ${displayPath}: review payload exceeded ${MAX_TOTAL_CHARS.toLocaleString()} chars */`;
-        newContent = `/* new content omitted for ${displayPath}: review payload exceeded ${MAX_TOTAL_CHARS.toLocaleString()} chars */`;
-      }
-
-      totalChars += oldContent.length + newContent.length;
-
-      return {
-        id: `${index}:${change.status}:${change.oldPath ?? ""}:${change.newPath ?? ""}`,
-        status: change.status,
-        oldPath: change.oldPath,
-        newPath: change.newPath,
-        displayPath,
-        oldContent,
-        newContent,
-      };
-    }),
-  );
+  const files: DiffReviewFile[] = changedPaths.map((change, index) => ({
+    id: `${index}:${change.status}:${change.oldPath ?? ""}:${change.newPath ?? ""}`,
+    status: change.status,
+    oldPath: change.oldPath,
+    newPath: change.newPath,
+    displayPath: toDisplayPath(change),
+  }));
 
   return { repoRoot, files };
+}
+
+export async function loadFileContents(
+  pi: ExtensionAPI,
+  repoRoot: string,
+  file: DiffReviewFile,
+  branchCompare?: BranchCompareOptions,
+): Promise<DiffReviewFileContents> {
+  let rawOldContent: string;
+  let rawNewContent: string;
+
+  if (branchCompare != null) {
+    rawOldContent = file.oldPath == null ? "" : await getRefContent(pi, repoRoot, branchCompare.branch1, file.oldPath);
+    rawNewContent = file.newPath == null ? "" : await getRefContent(pi, repoRoot, branchCompare.branch2, file.newPath);
+  } else {
+    rawOldContent = file.oldPath == null ? "" : await getRefContent(pi, repoRoot, "HEAD", file.oldPath);
+    rawNewContent = file.newPath == null ? "" : await getWorkingTreeContent(repoRoot, file.newPath);
+  }
+
+  const oldContent = sanitizeContent(file.displayPath, "old", rawOldContent);
+  const newContent = sanitizeContent(file.displayPath, "new", rawNewContent);
+
+  return { oldContent, newContent };
 }

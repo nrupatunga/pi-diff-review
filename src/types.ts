@@ -6,6 +6,9 @@ export interface DiffReviewFile {
   oldPath: string | null;
   newPath: string | null;
   displayPath: string;
+}
+
+export interface DiffReviewFileContents {
   oldContent: string;
   newContent: string;
 }
@@ -31,7 +34,30 @@ export interface ReviewCancelPayload {
   type: "cancel";
 }
 
-export type ReviewWindowMessage = ReviewSubmitPayload | ReviewCancelPayload;
+export interface ReviewRequestFilePayload {
+  type: "request-file";
+  requestId: string;
+  fileId: string;
+}
+
+export type ReviewWindowMessage = ReviewSubmitPayload | ReviewCancelPayload | ReviewRequestFilePayload;
+
+export interface ReviewFileDataMessage {
+  type: "file-data";
+  requestId: string;
+  fileId: string;
+  oldContent: string;
+  newContent: string;
+}
+
+export interface ReviewFileErrorMessage {
+  type: "file-error";
+  requestId: string;
+  fileId: string;
+  message: string;
+}
+
+export type ReviewHostMessage = ReviewFileDataMessage | ReviewFileErrorMessage;
 
 export interface DiffReviewWindowData {
   repoRoot: string;

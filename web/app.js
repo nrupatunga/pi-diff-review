@@ -9,11 +9,79 @@ const state = {
   collapsedDirs: {},
   reviewedFiles: {},
   scrollPositions: {},
+  fileContents: {},
+  fileErrors: {},
+  pendingRequestIds: {},
   vim: {
     side: "modified",
     visualAnchor: null,
     pendingKey: null,
   },
+};
+
+let requestSequence = 0;
+
+function cacheKey(fileId) {
+  return fileId;
+}
+
+function getRequestState(fileId) {
+  const key = cacheKey(fileId);
+  return {
+    contents: state.fileContents[key],
+    error: state.fileErrors[key],
+    requestId: state.pendingRequestIds[key],
+  };
+}
+
+function ensureFileLoaded(fileId) {
+  if (!fileId) return;
+  const key = cacheKey(fileId);
+  if (state.fileContents[key] != null) return;
+  if (state.fileErrors[key] != null) return;
+  if (state.pendingRequestIds[key] != null) return;
+
+  const requestId = `request:${Date.now()}:${++requestSequence}`;
+  state.pendingRequestIds[key] = requestId;
+  renderTree();
+  if (window.glimpse?.send) {
+    window.glimpse.send({ type: "request-file", requestId, fileId });
+  }
+}
+
+function isActiveFileReady() {
+  const file = activeFile();
+  if (!file) return false;
+  const rs = getRequestState(file.id);
+  return rs.contents != null && rs.error == null;
+}
+
+window.__reviewReceive = function (message) {
+  if (!message || typeof message !== "object") return;
+  const key = cacheKey(message.fileId);
+
+  if (message.type === "file-data") {
+    state.fileContents[key] = {
+      oldContent: message.oldContent,
+      newContent: message.newContent,
+    };
+    delete state.fileErrors[key];
+    delete state.pendingRequestIds[key];
+    renderTree();
+    if (state.activeFileId === message.fileId) {
+      mountFile({ restoreFileScroll: true });
+    }
+    return;
+  }
+
+  if (message.type === "file-error") {
+    state.fileErrors[key] = message.message || "Unknown error";
+    delete state.pendingRequestIds[key];
+    renderTree();
+    if (state.activeFileId === message.fileId) {
+      mountFile({ preserveScroll: false });
+    }
+  }
 };
 
 const repoRootEl = document.getElementById("repo-root");
@@ -177,6 +245,17 @@ function activeFile() {
   return reviewData.files.find((file) => file.id === state.activeFileId) ?? null;
 }
 
+function openFile(fileId) {
+  if (state.activeFileId === fileId) {
+    ensureFileLoaded(fileId);
+    return;
+  }
+  saveCurrentScrollPosition();
+  state.activeFileId = fileId;
+  renderAll({ restoreFileScroll: true });
+  ensureFileLoaded(fileId);
+}
+
 function buildTree(files) {
   const root = { name: "", path: "", kind: "dir", children: new Map(), file: null };
   for (const file of files) {
@@ -239,6 +318,9 @@ function renderTreeNode(node, depth) {
     const file = child.file;
     const count = state.comments.filter((comment) => comment.fileId === file.id).length;
     const reviewed = isFileReviewed(file.id);
+    const rs = getRequestState(file.id);
+    const loading = rs.requestId != null && rs.contents == null;
+    const errored = rs.error != null;
     const button = document.createElement("button");
     button.type = "button";
     button.className = [
@@ -248,7 +330,7 @@ function renderTreeNode(node, depth) {
     button.style.paddingLeft = `${(depth * indentPx) + 26}px`;
     button.innerHTML = `
       <span class="flex min-w-0 items-center gap-1.5 truncate ${file.id === state.activeFileId ? "font-medium" : ""}">
-        <span class="shrink-0 text-[0.83rem] ${reviewed ? "text-[#3fb950]" : "text-transparent"}">●</span>
+        <span class="shrink-0 text-[0.83rem] ${reviewed ? "text-[#3fb950]" : errored ? "text-red-400" : loading ? "text-[#58a6ff]" : "text-transparent"}">${reviewed ? "●" : errored ? "!" : loading ? "…" : "●"}</span>
         <span class="truncate">${escapeHtml(child.name)}</span>
       </span>
       <span class="flex shrink-0 items-center gap-1.5">
@@ -256,11 +338,7 @@ function renderTreeNode(node, depth) {
         <span class="font-medium ${statusBadgeClass(file.status)}">${escapeHtml(statusLabel(file.status).charAt(0))}</span>
       </span>
     `;
-    button.addEventListener("click", () => {
-      saveCurrentScrollPosition();
-      state.activeFileId = file.id;
-      renderAll({ restoreFileScroll: true });
-    });
+    button.addEventListener("click", () => openFile(file.id));
     fileTreeEl.appendChild(button);
   }
 }
@@ -837,10 +915,8 @@ function switchFile(delta) {
   if (nextIndex < 0) nextIndex = files.length - 1;
   if (nextIndex >= files.length) nextIndex = 0;
 
-  saveCurrentScrollPosition();
-  state.activeFileId = files[nextIndex].id;
   state.vim.visualAnchor = null;
-  renderAll({ restoreFileScroll: true });
+  openFile(files[nextIndex].id);
 }
 
 function toggleSidebar() {
@@ -973,8 +1049,22 @@ function renderFileComments() {
 function mountFile(options = {}) {
   if (!diffEditor || !monacoApi) return;
   const file = activeFile();
-  if (!file) return;
+  if (!file) {
+    currentFileLabelEl.textContent = "No file selected";
+    clearViewZones();
+    if (originalModel) originalModel.dispose();
+    if (modifiedModel) modifiedModel.dispose();
+    originalModel = monacoApi.editor.createModel("", "plaintext");
+    modifiedModel = monacoApi.editor.createModel("", "plaintext");
+    diffEditor.setModel({ original: originalModel, modified: modifiedModel });
+    applyEditorOptions();
+    updateDecorations();
+    renderFileComments();
+    requestAnimationFrame(layoutEditor);
+    return;
+  }
 
+  ensureFileLoaded(file.id);
   state.vim.visualAnchor = null;
 
   const preserveScroll = options.preserveScroll === true;
@@ -984,11 +1074,27 @@ function mountFile(options = {}) {
   currentFileLabelEl.textContent = file.displayPath;
   const language = inferLanguage(file.newPath || file.oldPath || file.displayPath);
 
+  const rs = getRequestState(file.id);
+  let oldContent = "";
+  let newContent = "";
+  if (rs.contents) {
+    oldContent = rs.contents.oldContent;
+    newContent = rs.contents.newContent;
+  } else if (rs.error) {
+    const errMsg = `Failed to load ${file.displayPath}\n\n${rs.error}`;
+    oldContent = errMsg;
+    newContent = errMsg;
+  } else {
+    const loadingMsg = `Loading ${file.displayPath}...`;
+    oldContent = loadingMsg;
+    newContent = loadingMsg;
+  }
+
   if (originalModel) originalModel.dispose();
   if (modifiedModel) modifiedModel.dispose();
 
-  originalModel = monacoApi.editor.createModel(file.oldContent, language);
-  modifiedModel = monacoApi.editor.createModel(file.newContent, language);
+  originalModel = monacoApi.editor.createModel(oldContent, language);
+  modifiedModel = monacoApi.editor.createModel(newContent, language);
 
   diffEditor.setModel({ original: originalModel, modified: modifiedModel });
   applyEditorOptions();

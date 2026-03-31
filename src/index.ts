@@ -2,10 +2,29 @@ import { resolve } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth, fuzzyFilter } from "@mariozechner/pi-tui";
 import { open, type GlimpseWindow } from "glimpseui";
-import { getDiffReviewFiles, listBranches, type BranchCompareOptions } from "./git.js";
+import { getDiffReviewFiles, loadFileContents, listBranches, type BranchCompareOptions } from "./git.js";
 import { composeReviewPrompt } from "./prompt.js";
-import type { ReviewSubmitPayload, ReviewWindowMessage } from "./types.js";
+import type {
+  DiffReviewFileContents,
+  ReviewCancelPayload,
+  ReviewHostMessage,
+  ReviewRequestFilePayload,
+  ReviewSubmitPayload,
+  ReviewWindowMessage,
+} from "./types.js";
 import { buildReviewHtml } from "./ui.js";
+
+function isCancelPayload(value: ReviewWindowMessage): value is ReviewCancelPayload {
+  return value.type === "cancel";
+}
+
+function isRequestFilePayload(value: ReviewWindowMessage): value is ReviewRequestFilePayload {
+  return value.type === "request-file";
+}
+
+function escapeForInlineScript(value: string): string {
+  return value.replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
+}
 
 function isSubmitPayload(value: ReviewWindowMessage): value is ReviewSubmitPayload {
   return value.type === "submit";
@@ -294,11 +313,29 @@ export default function (pi: ExtensionAPI) {
     activeWindow = window;
 
     const waitingUI = showWaitingUI(ctx);
+    const fileMap = new Map(files.map((file) => [file.id, file]));
+    const contentCache = new Map<string, Promise<DiffReviewFileContents>>();
+
+    const sendWindowMessage = (message: ReviewHostMessage): void => {
+      if (activeWindow !== window) return;
+      const payload = escapeForInlineScript(JSON.stringify(message));
+      window.send(`window.__reviewReceive(${payload});`);
+    };
+
+    const loadContents = (fileId: string): Promise<DiffReviewFileContents> => {
+      const cached = contentCache.get(fileId);
+      if (cached != null) return cached;
+      const file = fileMap.get(fileId);
+      if (file == null) return Promise.resolve({ oldContent: "", newContent: "" });
+      const pending = loadFileContents(pi, repoRoot, file, branchCompare);
+      contentCache.set(fileId, pending);
+      return pending;
+    };
 
     ctx.ui.notify("Opened native diff review window.", "info");
 
     try {
-      const windowMessagePromise = new Promise<ReviewWindowMessage | null>((resolve, reject) => {
+      const terminalMessagePromise = new Promise<ReviewSubmitPayload | ReviewCancelPayload | null>((resolve, reject) => {
         let settled = false;
 
         const cleanup = (): void => {
@@ -310,15 +347,43 @@ export default function (pi: ExtensionAPI) {
           }
         };
 
-        const settle = (value: ReviewWindowMessage | null): void => {
+        const settle = (value: ReviewSubmitPayload | ReviewCancelPayload | null): void => {
           if (settled) return;
           settled = true;
           cleanup();
           resolve(value);
         };
 
+        const handleRequestFile = async (message: ReviewRequestFilePayload): Promise<void> => {
+          try {
+            const contents = await loadContents(message.fileId);
+            sendWindowMessage({
+              type: "file-data",
+              requestId: message.requestId,
+              fileId: message.fileId,
+              oldContent: contents.oldContent,
+              newContent: contents.newContent,
+            });
+          } catch (error) {
+            const messageText = error instanceof Error ? error.message : String(error);
+            sendWindowMessage({
+              type: "file-error",
+              requestId: message.requestId,
+              fileId: message.fileId,
+              message: messageText,
+            });
+          }
+        };
+
         const onMessage = (data: unknown): void => {
-          settle(data as ReviewWindowMessage);
+          const message = data as ReviewWindowMessage;
+          if (isRequestFilePayload(message)) {
+            void handleRequestFile(message);
+            return;
+          }
+          if (isSubmitPayload(message) || isCancelPayload(message)) {
+            settle(message);
+          }
         };
 
         const onClosed = (): void => {
@@ -338,18 +403,18 @@ export default function (pi: ExtensionAPI) {
       });
 
       const result = await Promise.race([
-        windowMessagePromise.then((message) => ({ type: "window" as const, message })),
+        terminalMessagePromise.then((message) => ({ type: "window" as const, message })),
         waitingUI.promise.then((reason) => ({ type: "ui" as const, reason })),
       ]);
 
       if (result.type === "ui" && result.reason === "escape") {
         closeActiveWindow();
-        await windowMessagePromise.catch(() => null);
+        await terminalMessagePromise.catch(() => null);
         ctx.ui.notify("Diff review cancelled.", "info");
         return;
       }
 
-      const message = result.type === "window" ? result.message : await windowMessagePromise;
+      const message = result.type === "window" ? result.message : await terminalMessagePromise;
 
       waitingUI.dismiss();
       await waitingUI.promise;
@@ -357,11 +422,6 @@ export default function (pi: ExtensionAPI) {
 
       if (message == null || message.type === "cancel") {
         ctx.ui.notify("Diff review cancelled.", "info");
-        return;
-      }
-
-      if (!isSubmitPayload(message)) {
-        ctx.ui.notify("Diff review returned an unknown payload.", "error");
         return;
       }
 
