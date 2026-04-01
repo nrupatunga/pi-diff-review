@@ -302,7 +302,13 @@ export default function (pi: ExtensionAPI) {
     const titleSuffix = branchCompare
       ? ` — ${branchCompare.branch1}..${branchCompare.branch2}`
       : "";
-    const html = buildReviewHtml({ repoRoot, files });
+    const html = buildReviewHtml({
+      repoRoot,
+      files,
+      branchCompare: branchCompare
+        ? { branch1: branchCompare.branch1, branch2: branchCompare.branch2 }
+        : undefined,
+    });
     const window = withSanitizedGlimpseEnv(() =>
       open(html, {
         width: 1440,

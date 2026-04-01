@@ -84,6 +84,7 @@ window.__reviewReceive = function (message) {
   }
 };
 
+const reviewTitleEl = document.getElementById("review-title");
 const repoRootEl = document.getElementById("repo-root");
 const fileTreeEl = document.getElementById("file-tree");
 const summaryEl = document.getElementById("summary");
@@ -100,6 +101,14 @@ const toggleUnchangedButton = document.getElementById("toggle-unchanged-button")
 const toggleWrapButton = document.getElementById("toggle-wrap-button");
 
 repoRootEl.textContent = reviewData.repoRoot || "";
+
+if (reviewTitleEl) {
+  const base = reviewData.branchCompare?.branch1;
+  const compare = reviewData.branchCompare?.branch2;
+  reviewTitleEl.textContent = base && compare
+    ? `Diff review (${base}..${compare})`
+    : "Diff review";
+}
 
 let monacoApi = null;
 let diffEditor = null;

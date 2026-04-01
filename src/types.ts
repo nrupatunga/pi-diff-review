@@ -59,7 +59,13 @@ export interface ReviewFileErrorMessage {
 
 export type ReviewHostMessage = ReviewFileDataMessage | ReviewFileErrorMessage;
 
+export interface DiffReviewBranchCompareData {
+  branch1: string;
+  branch2: string;
+}
+
 export interface DiffReviewWindowData {
   repoRoot: string;
   files: DiffReviewFile[];
+  branchCompare?: DiffReviewBranchCompareData;
 }
