@@ -62,6 +62,7 @@ function withSanitizedGlimpseEnv<T>(fn: () => T): T {
 export default function (pi: ExtensionAPI) {
   let activeWindow: GlimpseWindow | null = null;
   let activeWaitingUIDismiss: (() => void) | null = null;
+  let lastBranchCompare: BranchCompareOptions | null = null;
 
   function closeActiveWindow(): void {
     if (activeWindow == null) return;
@@ -299,6 +300,13 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
+    if (branchCompare != null) {
+      lastBranchCompare = {
+        branch1: branchCompare.branch1,
+        branch2: branchCompare.branch2,
+      };
+    }
+
     const titleSuffix = branchCompare
       ? ` — ${branchCompare.branch1}..${branchCompare.branch2}`
       : "";
@@ -511,6 +519,23 @@ export default function (pi: ExtensionAPI) {
       }
 
       await reviewDiff(ctx, undefined, { branch1, branch2 });
+    },
+  });
+
+  pi.registerCommand("diff-review-last", {
+    description: "Re-run the last branch-to-branch diff review.",
+    handler: async (_args, ctx) => {
+      if (lastBranchCompare == null) {
+        ctx.ui.notify(
+          "No previous branch comparison in this session. Run /diff-review <branch1> <branch2> or /diff-review-branches first.",
+          "warning",
+        );
+        return;
+      }
+      await reviewDiff(ctx, undefined, {
+        branch1: lastBranchCompare.branch1,
+        branch2: lastBranchCompare.branch2,
+      });
     },
   });
 

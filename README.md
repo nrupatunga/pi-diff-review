@@ -47,6 +47,14 @@ Fetches all local and remote branches (sorted by most recent commit) and shows a
 3. Pick the base branch, then the compare branch
 4. Diff review window opens automatically
 
+### Repeat the last branch comparison
+
+```
+/diff-review-last
+```
+
+Re-runs the most recent branch-to-branch review from this session, so you don't need to type refs or re-pick branches.
+
 Press `?` inside the review window for all shortcuts.
 
 **Tip:** Add large/binary files to `.gitignore` before running — the UI loads the full diff payload into memory, so big files will slow it down or crash.
@@ -59,11 +67,12 @@ Press `?` inside the review window for all shortcuts.
 | `Ctrl-d / Ctrl-u` | Half-page down / up |
 | `gg / G` | Beginning / end of file |
 | `n / p` | Next / previous change hunk |
-| `v` | Visual line selection |
+| `v` | Start visual line selection |
+| `s` | Select whole hunk (from visual mode) |
 | `a` | Add comment |
 | `y` | Yank (copy) to clipboard |
 | `dd / x` | Delete comment at cursor |
-| `h / l` | Focus left / right pane |
+| `Ctrl-h / Ctrl-l` | Focus original / modified pane |
 | `Tab` | Toggle pane |
 | `J / K` | Next / previous file |
 | `r` | Mark reviewed |
