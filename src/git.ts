@@ -265,16 +265,15 @@ export async function loadFileContents(
   file: DiffReviewFile,
   branchCompare?: BranchCompareOptions,
 ): Promise<DiffReviewFileContents> {
-  let rawOldContent: string;
-  let rawNewContent: string;
+  const oldContentPromise = branchCompare != null
+    ? (file.oldPath == null ? Promise.resolve("") : getRefContent(pi, repoRoot, branchCompare.branch1, file.oldPath))
+    : (file.oldPath == null ? Promise.resolve("") : getRefContent(pi, repoRoot, "HEAD", file.oldPath));
 
-  if (branchCompare != null) {
-    rawOldContent = file.oldPath == null ? "" : await getRefContent(pi, repoRoot, branchCompare.branch1, file.oldPath);
-    rawNewContent = file.newPath == null ? "" : await getRefContent(pi, repoRoot, branchCompare.branch2, file.newPath);
-  } else {
-    rawOldContent = file.oldPath == null ? "" : await getRefContent(pi, repoRoot, "HEAD", file.oldPath);
-    rawNewContent = file.newPath == null ? "" : await getWorkingTreeContent(repoRoot, file.newPath);
-  }
+  const newContentPromise = branchCompare != null
+    ? (file.newPath == null ? Promise.resolve("") : getRefContent(pi, repoRoot, branchCompare.branch2, file.newPath))
+    : (file.newPath == null ? Promise.resolve("") : getWorkingTreeContent(repoRoot, file.newPath));
+
+  const [rawOldContent, rawNewContent] = await Promise.all([oldContentPromise, newContentPromise]);
 
   const oldContent = sanitizeContent(file.displayPath, "old", rawOldContent);
   const newContent = sanitizeContent(file.displayPath, "new", rawNewContent);

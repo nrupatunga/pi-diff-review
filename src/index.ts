@@ -320,6 +320,7 @@ export default function (pi: ExtensionAPI) {
 
     const waitingUI = showWaitingUI(ctx);
     const fileMap = new Map(files.map((file) => [file.id, file]));
+    const fileOrder = files.map((file) => file.id);
     const contentCache = new Map<string, Promise<DiffReviewFileContents>>();
 
     const sendWindowMessage = (message: ReviewHostMessage): void => {
@@ -337,6 +338,26 @@ export default function (pi: ExtensionAPI) {
       contentCache.set(fileId, pending);
       return pending;
     };
+
+    const prefetchAround = (fileId: string, count = 2): void => {
+      const index = fileOrder.indexOf(fileId);
+      if (index < 0) return;
+      for (let offset = 1; offset <= count; offset++) {
+        const next = fileOrder[index + offset];
+        const prev = fileOrder[index - offset];
+        if (next) {
+          void loadContents(next).catch(() => {});
+        }
+        if (prev) {
+          void loadContents(prev).catch(() => {});
+        }
+      }
+    };
+
+    // Warm the first files in background to reduce visible loading on initial navigation.
+    for (const id of fileOrder.slice(0, 2)) {
+      void loadContents(id).catch(() => {});
+    }
 
     ctx.ui.notify("Opened native diff review window.", "info");
 
@@ -370,6 +391,7 @@ export default function (pi: ExtensionAPI) {
               oldContent: contents.oldContent,
               newContent: contents.newContent,
             });
+            prefetchAround(message.fileId, 2);
           } catch (error) {
             const messageText = error instanceof Error ? error.message : String(error);
             sendWindowMessage({
