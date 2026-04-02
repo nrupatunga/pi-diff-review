@@ -41,13 +41,20 @@ export async function getPRFiles(
 ): Promise<{ repoRoot: string; files: DiffReviewFile[]; branchCompare: BranchCompareOptions; prTitle: string }> {
   const repoRoot = await getRepoRoot(pi, cwd);
 
-  // Fetch to ensure remote refs are up to date
-  await pi.exec("git", ["fetch", "origin"], { cwd: repoRoot }).catch(() => {});
-
   const prInfo = await getPRInfo(pi, cwd, prNumber);
+
+  // Fetch base branch and PR head ref (works for forks too)
+  await pi.exec("git", ["fetch", "origin", prInfo.baseRefName], { cwd: repoRoot }).catch(() => {});
+  await pi.exec("git", ["fetch", "origin", `pull/${prNumber}/head:refs/pr/${prNumber}`], { cwd: repoRoot }).catch(() => {});
+
+  // Use fetched PR ref for head; fall back to origin/<branch> if the PR ref fetch failed
+  const prHeadRef = `refs/pr/${prNumber}`;
+  const headRefCheck = await pi.exec("git", ["rev-parse", "--verify", prHeadRef], { cwd: repoRoot });
+  const headRef = headRefCheck.code === 0 ? prHeadRef : `origin/${prInfo.headRefName}`;
+
   const branchCompare: BranchCompareOptions = {
     branch1: `origin/${prInfo.baseRefName}`,
-    branch2: `origin/${prInfo.headRefName}`,
+    branch2: headRef,
   };
 
   const { files } = await getDiffReviewFiles(pi, cwd, branchCompare);
