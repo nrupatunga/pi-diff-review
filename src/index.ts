@@ -4,7 +4,7 @@ import { Key, matchesKey, truncateToWidth, visibleWidth, fuzzyFilter } from "@ma
 import { open, type GlimpseWindow } from "glimpseui";
 import { getDiffReviewFiles, loadFileContents, listBranches, type BranchCompareOptions } from "./git.js";
 import { getPRData } from "./github.js";
-import { composeReviewPrompt } from "./prompt.js";
+import { composeReviewPrompt, composePRCommentsPrompt } from "./prompt.js";
 import type {
   DiffReviewComment,
   DiffReviewFileContents,
@@ -540,6 +540,29 @@ export default function (pi: ExtensionAPI) {
         branch1: lastBranchCompare.branch1,
         branch2: lastBranchCompare.branch2,
       });
+    },
+  });
+
+  pi.registerCommand("pr-comments", {
+    description: "Fetch PR review comments and insert as a prompt. Usage: /pr-comments <number>",
+    handler: async (args, ctx) => {
+      const prNumber = args.trim();
+      if (!prNumber || !/^\d+$/.test(prNumber)) {
+        ctx.ui.notify("Usage: /pr-comments <PR number>", "warning");
+        return;
+      }
+
+      ctx.ui.notify(`Fetching PR #${prNumber} comments...`, "info");
+
+      try {
+        const { files, comments } = await getPRData(pi, ctx.cwd, prNumber);
+        const prompt = composePRCommentsPrompt(prNumber, files, comments);
+        ctx.ui.setEditorText(prompt);
+        ctx.ui.notify(`Inserted ${comments.length} PR comment(s) into the editor.`, "info");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.ui.notify(`Failed to load PR #${prNumber}: ${message}`, "error");
+      }
     },
   });
 

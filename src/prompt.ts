@@ -39,3 +39,29 @@ export function composeReviewPrompt(files: DiffReviewFile[], payload: ReviewSubm
 
   return lines.join("\n").trim();
 }
+
+export function composePRCommentsPrompt(prNumber: string, files: DiffReviewFile[], comments: DiffReviewComment[]): string {
+  const fileMap = new Map(files.map((file) => [file.id, file]));
+  const lines: string[] = [];
+
+  lines.push(`Please address the following PR #${prNumber} feedback`);
+  lines.push("");
+
+  comments.forEach((comment, index) => {
+    const file = fileMap.get(comment.fileId);
+    const filePath = file?.displayPath ?? comment.fileId;
+    lines.push(`${index + 1}. ${formatLocation(comment, filePath)}`);
+    if (comment.author) {
+      lines.push(`   [${comment.author}]: ${comment.body.trim()}`);
+    } else {
+      lines.push(`   ${comment.body.trim()}`);
+    }
+    lines.push("");
+  });
+
+  if (comments.length === 0) {
+    lines.push("No review comments found on this PR.");
+  }
+
+  return lines.join("\n").trim();
+}
