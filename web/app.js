@@ -2,7 +2,7 @@ const reviewData = JSON.parse(document.getElementById("diff-review-data").textCo
 
 const state = {
   activeFileId: reviewData.files[0]?.id ?? null,
-  comments: [],
+  comments: Array.isArray(reviewData.initialComments) ? [...reviewData.initialComments] : [],
   overallComment: "",
   hideUnchanged: false,
   wrapLines: true,

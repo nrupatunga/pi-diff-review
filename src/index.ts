@@ -3,8 +3,10 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-cod
 import { Key, matchesKey, truncateToWidth, visibleWidth, fuzzyFilter } from "@mariozechner/pi-tui";
 import { open, type GlimpseWindow } from "glimpseui";
 import { getDiffReviewFiles, loadFileContents, listBranches, type BranchCompareOptions } from "./git.js";
+import { getPRFiles, getPRComments } from "./github.js";
 import { composeReviewPrompt } from "./prompt.js";
 import type {
+  DiffReviewComment,
   DiffReviewFileContents,
   ReviewCancelPayload,
   ReviewHostMessage,
@@ -286,6 +288,7 @@ export default function (pi: ExtensionAPI) {
     ctx: ExtensionCommandContext,
     targetDir?: string,
     branchCompare?: BranchCompareOptions,
+    initialComments?: DiffReviewComment[],
   ): Promise<void> {
     if (activeWindow != null) {
       ctx.ui.notify("A diff review window is already open.", "warning");
@@ -316,6 +319,7 @@ export default function (pi: ExtensionAPI) {
       branchCompare: branchCompare
         ? { branch1: branchCompare.branch1, branch2: branchCompare.branch2 }
         : undefined,
+      initialComments,
     });
     const window = withSanitizedGlimpseEnv(() =>
       open(html, {
@@ -536,6 +540,35 @@ export default function (pi: ExtensionAPI) {
         branch1: lastBranchCompare.branch1,
         branch2: lastBranchCompare.branch2,
       });
+    },
+  });
+
+  pi.registerCommand("diff-review-pr", {
+    description: "Review a GitHub PR with pre-loaded review comments. Usage: /diff-review-pr <number>",
+    handler: async (args, ctx) => {
+      const prNumber = args.trim();
+      if (!prNumber || !/^\d+$/.test(prNumber)) {
+        ctx.ui.notify("Usage: /diff-review-pr <PR number>", "warning");
+        return;
+      }
+
+      ctx.ui.notify(`Fetching PR #${prNumber} diff and comments...`, "info");
+
+      try {
+        const { repoRoot, files, branchCompare, prTitle } = await getPRFiles(pi, ctx.cwd, prNumber);
+        if (files.length === 0) {
+          ctx.ui.notify(`PR #${prNumber} has no changed files.`, "info");
+          return;
+        }
+
+        const prComments = await getPRComments(pi, ctx.cwd, prNumber, files);
+        ctx.ui.notify(`Loaded ${prComments.length} comment(s) from PR #${prNumber}.`, "info");
+
+        await reviewDiff(ctx, undefined, branchCompare, prComments);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.ui.notify(`Failed to load PR #${prNumber}: ${message}`, "error");
+      }
     },
   });
 

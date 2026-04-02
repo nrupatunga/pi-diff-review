@@ -28,7 +28,12 @@ export function composeReviewPrompt(files: DiffReviewFile[], payload: ReviewSubm
     const file = fileMap.get(comment.fileId);
     const filePath = file?.displayPath ?? comment.fileId;
     lines.push(`${index + 1}. ${formatLocation(comment, filePath)}`);
-    lines.push(`   ${comment.body.trim()}`);
+    const body = comment.body.trim();
+    if (comment.author) {
+      lines.push(`   [${comment.author}]: ${body}`);
+    } else {
+      lines.push(`   ${body}`);
+    }
     lines.push("");
   });
 

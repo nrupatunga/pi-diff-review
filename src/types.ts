@@ -22,6 +22,7 @@ export interface DiffReviewComment {
   startLine: number | null;
   endLine: number | null;
   body: string;
+  author?: string;
 }
 
 export interface ReviewSubmitPayload {
@@ -68,4 +69,5 @@ export interface DiffReviewWindowData {
   repoRoot: string;
   files: DiffReviewFile[];
   branchCompare?: DiffReviewBranchCompareData;
+  initialComments?: DiffReviewComment[];
 }
