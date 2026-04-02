@@ -16,6 +16,7 @@ interface GitHubPRInfo {
   headRefName: string;
   number: number;
   title: string;
+  url: string;
 }
 
 async function runGh(pi: ExtensionAPI, cwd: string, args: string[]): Promise<string> {
@@ -27,9 +28,15 @@ async function runGh(pi: ExtensionAPI, cwd: string, args: string[]): Promise<str
   return result.stdout;
 }
 
+function repoFromPRUrl(url: string): string | null {
+  // https://github.com/owner/repo/pull/123
+  const match = url.match(/github\.com\/([^/]+\/[^/]+)\/pull\//);
+  return match ? match[1] : null;
+}
+
 export async function getPRInfo(pi: ExtensionAPI, cwd: string, prNumber: string): Promise<GitHubPRInfo> {
   const output = await runGh(pi, cwd, [
-    "pr", "view", prNumber, "--json", "baseRefName,headRefName,number,title",
+    "pr", "view", prNumber, "--json", "baseRefName,headRefName,number,title,url",
   ]);
   return JSON.parse(output) as GitHubPRInfo;
 }
@@ -38,7 +45,7 @@ export async function getPRFiles(
   pi: ExtensionAPI,
   cwd: string,
   prNumber: string,
-): Promise<{ repoRoot: string; files: DiffReviewFile[]; branchCompare: BranchCompareOptions; prTitle: string }> {
+): Promise<{ repoRoot: string; files: DiffReviewFile[]; branchCompare: BranchCompareOptions; prTitle: string; prUrl: string }> {
   const repoRoot = await getRepoRoot(pi, cwd);
 
   const prInfo = await getPRInfo(pi, cwd, prNumber);
@@ -59,7 +66,7 @@ export async function getPRFiles(
 
   const { files } = await getDiffReviewFiles(pi, cwd, branchCompare);
 
-  return { repoRoot, files, branchCompare, prTitle: prInfo.title };
+  return { repoRoot, files, branchCompare, prTitle: prInfo.title, prUrl: prInfo.url };
 }
 
 export async function getPRComments(
@@ -67,9 +74,15 @@ export async function getPRComments(
   cwd: string,
   prNumber: string,
   files: DiffReviewFile[],
+  prUrl?: string,
 ): Promise<DiffReviewComment[]> {
+  const repo = prUrl ? repoFromPRUrl(prUrl) : null;
+  const apiPath = repo
+    ? `repos/${repo}/pulls/${prNumber}/comments`
+    : `repos/{owner}/{repo}/pulls/${prNumber}/comments`;
+
   const output = await runGh(pi, cwd, [
-    "api", `repos/{owner}/{repo}/pulls/${prNumber}/comments`,
+    "api", apiPath,
     "--paginate",
   ]);
 
