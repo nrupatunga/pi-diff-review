@@ -2,15 +2,6 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { DiffReviewComment, DiffReviewFile } from "./types.js";
 import { getRepoRoot, getDiffReviewFiles, type BranchCompareOptions } from "./git.js";
 
-interface GitHubPRComment {
-  path: string;
-  line: number | null;
-  start_line: number | null;
-  side: string;
-  body: string;
-  user: { login: string };
-}
-
 interface GitHubPRInfo {
   baseRefName: string;
   headRefName: string;
@@ -93,12 +84,14 @@ export async function getPRComments(
   prNumber: string,
   files: DiffReviewFile[],
 ): Promise<DiffReviewComment[]> {
-  // Use --jq to flatten paginated results into newline-delimited JSON objects.
-  // gh api --paginate returns concatenated JSON arrays ([...][...]) which JSON.parse can't handle.
+  // Use --jq to extract only the fields we need and produce compact one-object-per-line output.
+  // gh api --paginate returns concatenated JSON arrays ([...][...]) which JSON.parse can't handle,
+  // and --jq ".[]" breaks on multiline comment bodies. So we extract fields into flat objects.
+  const jqExpr = `.[] | {path, line, start_line, side, body, login: .user.login}`;
   const output = await runGh(pi, cwd, [
     "api", `repos/${repo}/pulls/${prNumber}/comments`,
     "--paginate",
-    "--jq", ".[]",
+    "--jq", jqExpr,
   ]);
   if (!output.trim()) return [];
 
@@ -111,9 +104,9 @@ export async function getPRComments(
   const comments: DiffReviewComment[] = [];
   for (const line of output.trim().split("\n")) {
     if (!line.trim()) continue;
-    let raw: GitHubPRComment;
+    let raw: { path: string; line: number | null; start_line: number | null; side: string; body: string; login: string };
     try {
-      raw = JSON.parse(line) as GitHubPRComment;
+      raw = JSON.parse(line);
     } catch {
       continue;
     }
@@ -124,6 +117,9 @@ export async function getPRComments(
     const endLine = raw.line ?? null;
     const startLine = raw.start_line ?? endLine;
 
+    // Skip file-level review comments (no line attached) — they can't be placed in the diff
+    if (startLine == null) continue;
+
     comments.push({
       id: `pr:${Date.now()}:${Math.random().toString(16).slice(2)}`,
       fileId: file.id,
@@ -131,7 +127,7 @@ export async function getPRComments(
       startLine,
       endLine,
       body: raw.body,
-      author: raw.user?.login ?? "unknown",
+      author: raw.login ?? "unknown",
       fromPR: true,
     });
   }
