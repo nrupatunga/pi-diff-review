@@ -64,10 +64,16 @@ export async function getPRComments(
   const output = await runGh(pi, cwd, [
     "api", `repos/{owner}/{repo}/pulls/${prNumber}/comments`,
     "--paginate",
-    "--jq", ".[] | {path, line, start_line, side, body, user: {login: .user.login}}",
   ]);
 
   if (!output.trim()) return [];
+
+  let rawComments: GitHubPRComment[];
+  try {
+    rawComments = JSON.parse(output) as GitHubPRComment[];
+  } catch {
+    return [];
+  }
 
   const fileByPath = new Map<string, DiffReviewFile>();
   for (const file of files) {
@@ -77,14 +83,7 @@ export async function getPRComments(
 
   const comments: DiffReviewComment[] = [];
 
-  for (const line of output.trim().split("\n")) {
-    if (!line.trim()) continue;
-    let raw: GitHubPRComment;
-    try {
-      raw = JSON.parse(line) as GitHubPRComment;
-    } catch {
-      continue;
-    }
+  for (const raw of rawComments) {
 
     const file = fileByPath.get(raw.path);
     if (!file) continue;
