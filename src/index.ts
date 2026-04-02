@@ -577,3 +577,4 @@ export default function (pi: ExtensionAPI) {
     closeActiveWindow();
   });
 }
+// TODO: validate PR number format
