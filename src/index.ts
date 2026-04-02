@@ -3,7 +3,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-cod
 import { Key, matchesKey, truncateToWidth, visibleWidth, fuzzyFilter } from "@mariozechner/pi-tui";
 import { open, type GlimpseWindow } from "glimpseui";
 import { getDiffReviewFiles, loadFileContents, listBranches, type BranchCompareOptions } from "./git.js";
-import { getPRFiles, getPRComments } from "./github.js";
+import { getPRData } from "./github.js";
 import { composeReviewPrompt } from "./prompt.js";
 import type {
   DiffReviewComment,
@@ -555,16 +555,15 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify(`Fetching PR #${prNumber} diff and comments...`, "info");
 
       try {
-        const { files, branchCompare, prTitle, repo } = await getPRFiles(pi, ctx.cwd, prNumber);
+        const { files, branchCompare, prTitle, comments } = await getPRData(pi, ctx.cwd, prNumber);
         if (files.length === 0) {
           ctx.ui.notify(`PR #${prNumber} has no changed files.`, "info");
           return;
         }
 
-        const prComments = await getPRComments(pi, ctx.cwd, repo, prNumber, files);
-        ctx.ui.notify(`Loaded ${prComments.length} comment(s) from PR #${prNumber}.`, "info");
+        ctx.ui.notify(`Loaded ${comments.length} comment(s) from PR #${prNumber}.`, "info");
 
-        await reviewDiff(ctx, undefined, branchCompare, prComments);
+        await reviewDiff(ctx, undefined, branchCompare, comments);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         ctx.ui.notify(`Failed to load PR #${prNumber}: ${message}`, "error");

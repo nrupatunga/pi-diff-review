@@ -19,13 +19,6 @@ async function runGh(pi: ExtensionAPI, cwd: string, args: string[]): Promise<str
   return result.stdout;
 }
 
-async function ensureGh(pi: ExtensionAPI, cwd: string): Promise<void> {
-  const result = await pi.exec("gh", ["auth", "status"], { cwd });
-  if (result.code !== 0) {
-    throw new Error("GitHub CLI (gh) is not installed or not authenticated. Run: gh auth login");
-  }
-}
-
 async function detectGitHubRepo(pi: ExtensionAPI, cwd: string): Promise<string> {
   const result = await pi.exec("git", ["remote", "get-url", "origin"], { cwd });
   if (result.code !== 0) {
@@ -38,12 +31,11 @@ async function detectGitHubRepo(pi: ExtensionAPI, cwd: string): Promise<string> 
   return match[1];
 }
 
-export async function getPRFiles(
+export async function getPRData(
   pi: ExtensionAPI,
   cwd: string,
   prNumber: string,
-): Promise<{ repoRoot: string; files: DiffReviewFile[]; branchCompare: BranchCompareOptions; prTitle: string; repo: string }> {
-  await ensureGh(pi, cwd);
+): Promise<{ repoRoot: string; files: DiffReviewFile[]; branchCompare: BranchCompareOptions; prTitle: string; comments: DiffReviewComment[] }> {
   const repoRoot = await getRepoRoot(pi, cwd);
   const repo = await detectGitHubRepo(pi, repoRoot);
 
@@ -57,13 +49,20 @@ export async function getPRFiles(
     throw new Error(`PR #${prNumber} is ${prInfo.state.toLowerCase()}. Only open PRs are supported.`);
   }
 
-  // Fetch PR head via pull/<N>/head (works for fork PRs where origin/<branch> doesn't exist)
-  const fetchBaseResult = await pi.exec("git", ["fetch", "origin", prInfo.baseRefName], { cwd: repoRoot });
+  // Run fetches and comment retrieval in parallel
+  const [fetchBaseResult, fetchHeadResult, commentsOutput] = await Promise.all([
+    pi.exec("git", ["fetch", "origin", prInfo.baseRefName], { cwd: repoRoot }),
+    pi.exec("git", ["fetch", "origin", `pull/${prNumber}/head:refs/pr/${prNumber}`], { cwd: repoRoot }),
+    runGh(pi, cwd, [
+      "api", `repos/${repo}/pulls/${prNumber}/comments`,
+      "--paginate",
+      "--jq", `.[] | {path, line, start_line, side, body, login: .user.login}`,
+    ]).catch(() => ""),
+  ]);
+
   if (fetchBaseResult.code !== 0) {
     throw new Error(`Failed to fetch base branch '${prInfo.baseRefName}' from origin.`);
   }
-
-  const fetchHeadResult = await pi.exec("git", ["fetch", "origin", `pull/${prNumber}/head:refs/pr/${prNumber}`], { cwd: repoRoot });
   if (fetchHeadResult.code !== 0) {
     throw new Error(`Failed to fetch PR #${prNumber} head ref. The PR branch may have been deleted.`);
   }
@@ -74,25 +73,12 @@ export async function getPRFiles(
   };
 
   const { files } = await getDiffReviewFiles(pi, cwd, branchCompare);
-  return { repoRoot, files, branchCompare, prTitle: prInfo.title, repo };
+  const comments = parseComments(commentsOutput, files);
+
+  return { repoRoot, files, branchCompare, prTitle: prInfo.title, comments };
 }
 
-export async function getPRComments(
-  pi: ExtensionAPI,
-  cwd: string,
-  repo: string,
-  prNumber: string,
-  files: DiffReviewFile[],
-): Promise<DiffReviewComment[]> {
-  // Use --jq to extract only the fields we need and produce compact one-object-per-line output.
-  // gh api --paginate returns concatenated JSON arrays ([...][...]) which JSON.parse can't handle,
-  // and --jq ".[]" breaks on multiline comment bodies. So we extract fields into flat objects.
-  const jqExpr = `.[] | {path, line, start_line, side, body, login: .user.login}`;
-  const output = await runGh(pi, cwd, [
-    "api", `repos/${repo}/pulls/${prNumber}/comments`,
-    "--paginate",
-    "--jq", jqExpr,
-  ]);
+function parseComments(output: string, files: DiffReviewFile[]): DiffReviewComment[] {
   if (!output.trim()) return [];
 
   const fileByPath = new Map<string, DiffReviewFile>();
