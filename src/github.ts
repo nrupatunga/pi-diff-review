@@ -34,10 +34,21 @@ function repoFromPRUrl(url: string): string | null {
   return match ? match[1] : null;
 }
 
+async function detectRepo(pi: ExtensionAPI, cwd: string): Promise<string | null> {
+  // Try origin remote URL to detect owner/repo
+  const result = await pi.exec("git", ["remote", "get-url", "origin"], { cwd });
+  if (result.code !== 0) return null;
+  const url = result.stdout.trim();
+  // Match github.com/owner/repo from https or ssh URLs
+  const match = url.match(/github\.com[:/]([^/]+\/[^/.]+)/);
+  return match ? match[1] : null;
+}
+
 export async function getPRInfo(pi: ExtensionAPI, cwd: string, prNumber: string): Promise<GitHubPRInfo> {
-  const output = await runGh(pi, cwd, [
-    "pr", "view", prNumber, "--json", "baseRefName,headRefName,number,title,url",
-  ]);
+  const repo = await detectRepo(pi, cwd);
+  const args = ["pr", "view", prNumber, "--json", "baseRefName,headRefName,number,title,url"];
+  if (repo) args.push("--repo", repo);
+  const output = await runGh(pi, cwd, args);
   return JSON.parse(output) as GitHubPRInfo;
 }
 
