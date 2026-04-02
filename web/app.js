@@ -476,9 +476,11 @@ function clearViewZones() {
 function renderCommentDOM(comment, onDelete) {
   const container = document.createElement("div");
   container.className = "view-zone-container";
+  const lineRef = `${comment.side === "original" ? "Original" : "Modified"} line ${comment.startLine}${comment.endLine != null && comment.endLine !== comment.startLine ? `-${comment.endLine}` : ""}`;
+  const authorPrefix = comment.author ? `@${comment.author} · ` : "";
   const title = comment.side === "file"
-    ? "File comment"
-    : `${comment.side === "original" ? "Original" : "Modified"} line ${comment.startLine}${comment.endLine != null && comment.endLine !== comment.startLine ? `-${comment.endLine}` : ""}`;
+    ? `${authorPrefix}File comment`
+    : `${authorPrefix}${lineRef}`;
 
   container.innerHTML = `
     <div class="mb-2 flex items-center justify-between gap-3">
