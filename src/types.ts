@@ -23,6 +23,7 @@ export interface DiffReviewComment {
   endLine: number | null;
   body: string;
   author?: string;
+  fromPR?: boolean;
 }
 
 export interface ReviewSubmitPayload {

@@ -16,6 +16,7 @@ interface GitHubPRInfo {
   headRefName: string;
   number: number;
   title: string;
+  state: string;
 }
 
 async function runGh(pi: ExtensionAPI, cwd: string, args: string[]): Promise<string> {
@@ -27,65 +28,79 @@ async function runGh(pi: ExtensionAPI, cwd: string, args: string[]): Promise<str
   return result.stdout;
 }
 
-async function detectRepo(pi: ExtensionAPI, cwd: string): Promise<string | null> {
-  const result = await pi.exec("git", ["remote", "get-url", "origin"], { cwd });
-  if (result.code !== 0) return null;
-  const match = result.stdout.trim().match(/github\.com[:/]([^/]+\/[^/.]+)/);
-  return match ? match[1] : null;
+async function ensureGh(pi: ExtensionAPI, cwd: string): Promise<void> {
+  const result = await pi.exec("gh", ["auth", "status"], { cwd });
+  if (result.code !== 0) {
+    throw new Error("GitHub CLI (gh) is not installed or not authenticated. Run: gh auth login");
+  }
 }
 
-async function getPRInfo(pi: ExtensionAPI, cwd: string, repo: string | null, prNumber: string): Promise<GitHubPRInfo> {
-  const args = ["pr", "view", prNumber, "--json", "baseRefName,headRefName,number,title"];
-  if (repo) args.push("--repo", repo);
-  const output = await runGh(pi, cwd, args);
-  return JSON.parse(output) as GitHubPRInfo;
+async function detectGitHubRepo(pi: ExtensionAPI, cwd: string): Promise<string> {
+  const result = await pi.exec("git", ["remote", "get-url", "origin"], { cwd });
+  if (result.code !== 0) {
+    throw new Error("No git origin remote found. Is this a GitHub repository?");
+  }
+  const match = result.stdout.trim().match(/github\.com[:/]([^/]+\/[^/.]+)/);
+  if (!match) {
+    throw new Error("Origin remote is not a GitHub URL.");
+  }
+  return match[1];
 }
 
 export async function getPRFiles(
   pi: ExtensionAPI,
   cwd: string,
   prNumber: string,
-): Promise<{ repoRoot: string; files: DiffReviewFile[]; branchCompare: BranchCompareOptions; prTitle: string }> {
+): Promise<{ repoRoot: string; files: DiffReviewFile[]; branchCompare: BranchCompareOptions; prTitle: string; repo: string }> {
+  await ensureGh(pi, cwd);
   const repoRoot = await getRepoRoot(pi, cwd);
-  const repo = await detectRepo(pi, repoRoot);
-  const prInfo = await getPRInfo(pi, repoRoot, repo, prNumber);
+  const repo = await detectGitHubRepo(pi, repoRoot);
 
-  await pi.exec("git", ["fetch", "origin", prInfo.baseRefName], { cwd: repoRoot }).catch(() => {});
-  await pi.exec("git", ["fetch", "origin", `pull/${prNumber}/head:refs/pr/${prNumber}`], { cwd: repoRoot }).catch(() => {});
+  const infoOutput = await runGh(pi, repoRoot, [
+    "pr", "view", prNumber, "--repo", repo,
+    "--json", "baseRefName,headRefName,number,title,state",
+  ]);
+  const prInfo = JSON.parse(infoOutput) as GitHubPRInfo;
 
-  const prHeadRef = `refs/pr/${prNumber}`;
-  const headRefCheck = await pi.exec("git", ["rev-parse", "--verify", prHeadRef], { cwd: repoRoot });
-  const headRef = headRefCheck.code === 0 ? prHeadRef : `origin/${prInfo.headRefName}`;
+  if (prInfo.state === "MERGED" || prInfo.state === "CLOSED") {
+    throw new Error(`PR #${prNumber} is ${prInfo.state.toLowerCase()}. Only open PRs are supported.`);
+  }
+
+  // Fetch PR head via pull/<N>/head (works for fork PRs where origin/<branch> doesn't exist)
+  const fetchBaseResult = await pi.exec("git", ["fetch", "origin", prInfo.baseRefName], { cwd: repoRoot });
+  if (fetchBaseResult.code !== 0) {
+    throw new Error(`Failed to fetch base branch '${prInfo.baseRefName}' from origin.`);
+  }
+
+  const fetchHeadResult = await pi.exec("git", ["fetch", "origin", `pull/${prNumber}/head:refs/pr/${prNumber}`], { cwd: repoRoot });
+  if (fetchHeadResult.code !== 0) {
+    throw new Error(`Failed to fetch PR #${prNumber} head ref. The PR branch may have been deleted.`);
+  }
 
   const branchCompare: BranchCompareOptions = {
     branch1: `origin/${prInfo.baseRefName}`,
-    branch2: headRef,
+    branch2: `refs/pr/${prNumber}`,
   };
 
   const { files } = await getDiffReviewFiles(pi, cwd, branchCompare);
-  return { repoRoot, files, branchCompare, prTitle: prInfo.title };
+  return { repoRoot, files, branchCompare, prTitle: prInfo.title, repo };
 }
 
 export async function getPRComments(
   pi: ExtensionAPI,
   cwd: string,
+  repo: string,
   prNumber: string,
   files: DiffReviewFile[],
 ): Promise<DiffReviewComment[]> {
-  const repo = await detectRepo(pi, cwd);
-  const apiPath = repo
-    ? `repos/${repo}/pulls/${prNumber}/comments`
-    : `repos/{owner}/{repo}/pulls/${prNumber}/comments`;
-
-  const output = await runGh(pi, cwd, ["api", apiPath, "--paginate"]);
+  // Use --jq to flatten paginated results into newline-delimited JSON objects.
+  // gh api --paginate returns concatenated JSON arrays ([...][...]) which JSON.parse can't handle.
+  const output = await runGh(pi, cwd, [
+    "api", `repos/${repo}/pulls/${prNumber}/comments`,
+    "--paginate",
+    "--jq", ".[]",
+  ]);
   if (!output.trim()) return [];
-
-  let rawComments: GitHubPRComment[];
-  try {
-    rawComments = JSON.parse(output) as GitHubPRComment[];
-  } catch {
-    return [];
-  }
 
   const fileByPath = new Map<string, DiffReviewFile>();
   for (const file of files) {
@@ -94,7 +109,15 @@ export async function getPRComments(
   }
 
   const comments: DiffReviewComment[] = [];
-  for (const raw of rawComments) {
+  for (const line of output.trim().split("\n")) {
+    if (!line.trim()) continue;
+    let raw: GitHubPRComment;
+    try {
+      raw = JSON.parse(line) as GitHubPRComment;
+    } catch {
+      continue;
+    }
+
     const file = fileByPath.get(raw.path);
     if (!file) continue;
 
@@ -109,6 +132,7 @@ export async function getPRComments(
       endLine,
       body: raw.body,
       author: raw.user?.login ?? "unknown",
+      fromPR: true,
     });
   }
 

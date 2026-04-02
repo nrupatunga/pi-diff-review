@@ -555,13 +555,13 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify(`Fetching PR #${prNumber} diff and comments...`, "info");
 
       try {
-        const { files, branchCompare, prTitle } = await getPRFiles(pi, ctx.cwd, prNumber);
+        const { files, branchCompare, prTitle, repo } = await getPRFiles(pi, ctx.cwd, prNumber);
         if (files.length === 0) {
           ctx.ui.notify(`PR #${prNumber} has no changed files.`, "info");
           return;
         }
 
-        const prComments = await getPRComments(pi, ctx.cwd, prNumber, files);
+        const prComments = await getPRComments(pi, ctx.cwd, repo, prNumber, files);
         ctx.ui.notify(`Loaded ${prComments.length} comment(s) from PR #${prNumber}.`, "info");
 
         await reviewDiff(ctx, undefined, branchCompare, prComments);

@@ -474,46 +474,60 @@ function clearViewZones() {
 }
 
 function renderCommentDOM(comment, onDelete) {
+  const isPR = comment.fromPR === true;
   const container = document.createElement("div");
-  container.className = "view-zone-container";
+  container.className = isPR ? "view-zone-container from-pr" : "view-zone-container";
+
   const lineRef = `${comment.side === "original" ? "Original" : "Modified"} line ${comment.startLine}${comment.endLine != null && comment.endLine !== comment.startLine ? `-${comment.endLine}` : ""}`;
   const authorPrefix = comment.author ? `@${comment.author} · ` : "";
   const title = comment.side === "file"
     ? `${authorPrefix}File comment`
     : `${authorPrefix}${lineRef}`;
 
+  const deleteButton = isPR
+    ? ""
+    : `<button data-action="delete" class="cursor-pointer rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-medium text-review-muted hover:bg-red-500/10 hover:text-red-400">Delete</button>`;
+
   container.innerHTML = `
     <div class="mb-2 flex items-center justify-between gap-3">
       <div class="text-sm font-semibold text-review-text">${escapeHtml(title)}</div>
-      <button data-action="delete" class="cursor-pointer rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-medium text-review-muted hover:bg-red-500/10 hover:text-red-400">Delete</button>
+      ${deleteButton}
     </div>
-    <textarea data-comment-id="${escapeHtml(comment.id)}" class="scrollbar-thin min-h-[76px] w-full resize-y rounded-md border border-review-border bg-[#010409] px-3 py-2 text-sm text-review-text outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Leave a comment"></textarea>
+    <textarea data-comment-id="${escapeHtml(comment.id)}" class="scrollbar-thin min-h-[76px] w-full resize-y rounded-md border border-review-border bg-[#010409] px-3 py-2 text-sm text-review-text outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Leave a comment"${isPR ? " readonly" : ""}></textarea>
   `;
   const textarea = container.querySelector("textarea");
   textarea.value = comment.body || "";
-  textarea.addEventListener("input", () => {
-    comment.body = textarea.value;
-  });
-  textarea.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
+
+  if (!isPR) {
+    textarea.addEventListener("input", () => {
+      comment.body = textarea.value;
+    });
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onDelete();
+        return;
+      }
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        textarea.blur();
+        return;
+      }
       event.stopPropagation();
-      onDelete();
-      return;
+    });
+    const deleteEl = container.querySelector("[data-action='delete']");
+    if (deleteEl) deleteEl.addEventListener("click", onDelete);
+    if (!comment.body) {
+      setTimeout(() => textarea.focus(), 50);
     }
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
+  } else {
+    textarea.addEventListener("keydown", (event) => {
       event.stopPropagation();
-      textarea.blur();
-      return;
-    }
-    // Block all other keys from bubbling to vim handler while typing
-    event.stopPropagation();
-  });
-  container.querySelector("[data-action='delete']").addEventListener("click", onDelete);
-  if (!comment.body) {
-    setTimeout(() => textarea.focus(), 50);
+    });
   }
+
   return container;
 }
 
@@ -523,6 +537,7 @@ function deleteLatestEmptyInlineCommentForActiveFile() {
 
   for (let i = state.comments.length - 1; i >= 0; i--) {
     const comment = state.comments[i];
+    if (comment.fromPR) continue;
     if (comment.fileId !== file.id) continue;
     if (comment.side === "file") continue;
     if ((comment.body || "").trim().length > 0) continue;
@@ -548,6 +563,7 @@ function deleteCommentAtCursor() {
 
   for (let i = 0; i < state.comments.length; i++) {
     const c = state.comments[i];
+    if (c.fromPR) continue;
     if (c.fileId !== file.id || c.side !== side || c.side === "file") continue;
     const start = c.startLine ?? 0;
     const end = c.endLine ?? start;
