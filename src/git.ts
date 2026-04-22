@@ -3,14 +3,14 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { ChangeStatus, DiffReviewFile, DiffReviewFileContents } from "./types.js";
 
-const MAX_FILE_CHARS = 250_000;
-const MAX_TOTAL_CHARS = 2_000_000;
-const MAX_READ_BYTES = 1_000_000;
-const MAX_FILES = 200;
+export const MAX_FILE_CHARS = 250_000;
+export const MAX_TOTAL_CHARS = 2_000_000;
+export const MAX_READ_BYTES = 1_000_000;
+export const MAX_FILES = 200;
 
-const IGNORED_PREFIXES = [".pi/", "node_modules/", ".git/"];
+export const IGNORED_PREFIXES = [".pi/", "node_modules/", ".git/"];
 
-const BINARY_EXTENSIONS = new Set([
+export const BINARY_EXTENSIONS = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".tif", ".tiff", ".heic", ".svgz",
   ".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v",
   ".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a",
@@ -148,7 +148,7 @@ async function getWorkingTreeContent(repoRoot: string, path: string): Promise<st
   }
 }
 
-function sanitizeContent(path: string, side: "old" | "new", content: string): string {
+export function sanitizeContent(path: string, side: "old" | "new", content: string): string {
   if (content.includes("\u0000")) {
     return `/* ${side} content omitted for ${path}: appears to be binary data */`;
   }
