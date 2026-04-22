@@ -1,13 +1,7 @@
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth, fuzzyFilter } from "@mariozechner/pi-tui";
 import { open, type GlimpseWindow } from "glimpseui";
-import {
-  assertDirectory,
-  getFolderDiffReviewFiles,
-  loadFolderFileContents,
-  type FolderCompareOptions,
-} from "./folder.js";
 import { getDiffReviewFiles, loadFileContents, listBranches, type BranchCompareOptions } from "./git.js";
 import { getPRData } from "./github.js";
 import { composeReviewPrompt, composePRCommentsPrompt } from "./prompt.js";
@@ -295,33 +289,18 @@ export default function (pi: ExtensionAPI) {
     targetDir?: string,
     branchCompare?: BranchCompareOptions,
     initialComments?: DiffReviewComment[],
-    folderCompare?: FolderCompareOptions,
   ): Promise<void> {
     if (activeWindow != null) {
       ctx.ui.notify("A diff review window is already open.", "warning");
       return;
     }
 
-    let repoRoot: string;
-    let files;
-    if (folderCompare != null) {
-      const folderResult = await getFolderDiffReviewFiles(folderCompare);
-      files = folderResult.files;
-      repoRoot = `${folderCompare.left} ↔ ${folderCompare.right}`;
-      if (files.length === 0) {
-        ctx.ui.notify("No differences between the specified directories.", "info");
-        return;
-      }
-    } else {
-      const expanded = targetDir?.startsWith("~") ? targetDir.replace(/^~/, process.env.HOME ?? "") : targetDir;
-      const cwd = expanded ? resolve(ctx.cwd, expanded) : ctx.cwd;
-      const gitResult = await getDiffReviewFiles(pi, cwd, branchCompare);
-      repoRoot = gitResult.repoRoot;
-      files = gitResult.files;
-      if (files.length === 0) {
-        ctx.ui.notify("No diff between the specified refs.", "info");
-        return;
-      }
+    const expanded = targetDir?.startsWith("~") ? targetDir.replace(/^~/, process.env.HOME ?? "") : targetDir;
+    const cwd = expanded ? resolve(ctx.cwd, expanded) : ctx.cwd;
+    const { repoRoot, files } = await getDiffReviewFiles(pi, cwd, branchCompare);
+    if (files.length === 0) {
+      ctx.ui.notify("No diff between the specified refs.", "info");
+      return;
     }
 
     if (branchCompare != null) {
@@ -331,24 +310,15 @@ export default function (pi: ExtensionAPI) {
       };
     }
 
-    const titleSuffix = folderCompare
-      ? ` — ${basename(folderCompare.left) || folderCompare.left}..${basename(folderCompare.right) || folderCompare.right}`
-      : branchCompare
+    const titleSuffix = branchCompare
       ? ` — ${branchCompare.branch1}..${branchCompare.branch2}`
       : "";
-
-    // Reuse the existing branchCompare display slot so the window title bar shows a descriptive
-    // "<left>..<right>" header without needing a new UI concept.
-    const uiBranchCompare = folderCompare
-      ? { branch1: folderCompare.left, branch2: folderCompare.right }
-      : branchCompare
-      ? { branch1: branchCompare.branch1, branch2: branchCompare.branch2 }
-      : undefined;
-
     const html = buildReviewHtml({
       repoRoot,
       files,
-      branchCompare: uiBranchCompare,
+      branchCompare: branchCompare
+        ? { branch1: branchCompare.branch1, branch2: branchCompare.branch2 }
+        : undefined,
       initialComments,
     });
     const window = withSanitizedGlimpseEnv(() =>
@@ -376,9 +346,7 @@ export default function (pi: ExtensionAPI) {
       if (cached != null) return cached;
       const file = fileMap.get(fileId);
       if (file == null) return Promise.resolve({ oldContent: "", newContent: "" });
-      const pending = folderCompare != null
-        ? loadFolderFileContents(folderCompare, file)
-        : loadFileContents(pi, repoRoot, file, branchCompare);
+      const pending = loadFileContents(pi, repoRoot, file, branchCompare);
       contentCache.set(fileId, pending);
       return pending;
     };
@@ -572,46 +540,6 @@ export default function (pi: ExtensionAPI) {
         branch1: lastBranchCompare.branch1,
         branch2: lastBranchCompare.branch2,
       });
-    },
-  });
-
-  pi.registerCommand("diff-review-dirs", {
-    description:
-      "Compare two arbitrary directories in a diff review window. Usage: /diff-review-dirs <left> <right>",
-    handler: async (args, ctx) => {
-      const parts = args.trim().split(/\s+/).filter((p) => p.length > 0);
-      if (parts.length !== 2) {
-        ctx.ui.notify("Usage: /diff-review-dirs <left> <right>", "warning");
-        return;
-      }
-
-      const expandHome = (p: string): string =>
-        p.startsWith("~") ? p.replace(/^~/, process.env.HOME ?? "") : p;
-
-      const leftArg = parts[0];
-      const rightArg = parts[1];
-      const left = resolve(ctx.cwd, expandHome(leftArg));
-      const right = resolve(ctx.cwd, expandHome(rightArg));
-
-      if (left === right) {
-        ctx.ui.notify("Both paths resolve to the same directory — nothing to diff.", "warning");
-        return;
-      }
-
-      try {
-        await Promise.all([assertDirectory(left, "left"), assertDirectory(right, "right")]);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        ctx.ui.notify(message, "error");
-        return;
-      }
-
-      try {
-        await reviewDiff(ctx, undefined, undefined, undefined, { left, right });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        ctx.ui.notify(`Folder diff review failed: ${message}`, "error");
-      }
     },
   });
 
