@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { DiffReviewComment, DiffReviewFile } from "./types.js";
 import { getRepoRoot, getDiffReviewFiles, type BranchCompareOptions } from "./git.js";
 

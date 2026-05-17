@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { ChangeStatus, DiffReviewFile, DiffReviewFileContents } from "./types.js";
 
 const MAX_FILE_CHARS = 250_000;

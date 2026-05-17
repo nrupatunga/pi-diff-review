@@ -1,5 +1,17 @@
 import type { DiffReviewComment, DiffReviewFile, ReviewSubmitPayload } from "./types.js";
 
+export class PromptFileContextError extends Error {
+  readonly fileId: string;
+  readonly filePath: string;
+
+  constructor(message: string, context: { fileId: string; filePath: string }) {
+    super(message);
+    this.name = "PromptFileContextError";
+    this.fileId = context.fileId;
+    this.filePath = context.filePath;
+  }
+}
+
 function formatLocation(comment: DiffReviewComment, filePath: string): string {
   if (comment.side === "file" || comment.startLine == null) {
     return filePath;
@@ -9,6 +21,17 @@ function formatLocation(comment: DiffReviewComment, filePath: string): string {
     return `${filePath}:${comment.startLine}-${comment.endLine}${suffix}`;
   }
   return `${filePath}:${comment.startLine}${suffix}`;
+}
+
+function getCommentFilePath(fileMap: Map<string, DiffReviewFile>, comment: DiffReviewComment): string {
+  const file = fileMap.get(comment.fileId);
+  if (file == null) {
+    throw new PromptFileContextError(
+      `Unable to compose review prompt: comment references unknown file '${comment.fileId}'.`,
+      { fileId: comment.fileId, filePath: comment.fileId },
+    );
+  }
+  return file.displayPath;
 }
 
 export function composeReviewPrompt(files: DiffReviewFile[], payload: ReviewSubmitPayload): string {
@@ -25,8 +48,7 @@ export function composeReviewPrompt(files: DiffReviewFile[], payload: ReviewSubm
   }
 
   payload.comments.forEach((comment, index) => {
-    const file = fileMap.get(comment.fileId);
-    const filePath = file?.displayPath ?? comment.fileId;
+    const filePath = getCommentFilePath(fileMap, comment);
     lines.push(`${index + 1}. ${formatLocation(comment, filePath)}`);
     const body = comment.body.trim();
     if (comment.author) {
@@ -48,8 +70,7 @@ export function composePRCommentsPrompt(prNumber: string, files: DiffReviewFile[
   lines.push("");
 
   comments.forEach((comment, index) => {
-    const file = fileMap.get(comment.fileId);
-    const filePath = file?.displayPath ?? comment.fileId;
+    const filePath = getCommentFilePath(fileMap, comment);
     lines.push(`${index + 1}. ${formatLocation(comment, filePath)}`);
     if (comment.author) {
       lines.push(`   [${comment.author}]: ${comment.body.trim()}`);

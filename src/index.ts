@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import { Key, matchesKey, truncateToWidth, visibleWidth, fuzzyFilter } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { Key, matchesKey, truncateToWidth, visibleWidth, fuzzyFilter } from "@earendil-works/pi-tui";
 import { open, type GlimpseWindow } from "glimpseui";
 import { getDiffReviewFiles, loadFileContents, listBranches, type BranchCompareOptions } from "./git.js";
 import { getPRData } from "./github.js";
@@ -30,6 +30,19 @@ function escapeForInlineScript(value: string): string {
 
 function isSubmitPayload(value: ReviewWindowMessage): value is ReviewSubmitPayload {
   return value.type === "submit";
+}
+
+function parsePRIdentifier(input: string): string | null {
+  const value = input.trim();
+  const numberMatch = value.match(/^\d+$/);
+  const urlMatch = value.match(/^https?:\/\/(?:www\.)?github\.com\/[^/]+\/[^/]+\/pull\/(\d+)(?:[/?#].*)?$/i);
+  const rawNumber = numberMatch?.[0] ?? urlMatch?.[1];
+  if (rawNumber == null) return null;
+
+  const prNumber = Number(rawNumber);
+  if (!Number.isSafeInteger(prNumber) || prNumber <= 0) return null;
+
+  return String(prNumber);
 }
 
 type WaitingEditorResult = "escape" | "window-settled";
@@ -544,11 +557,11 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerCommand("pr-comments", {
-    description: "Fetch PR review comments and insert as a prompt. Usage: /pr-comments <number>",
+    description: "Fetch PR review comments and insert as a prompt. Usage: /pr-comments <number-or-url>",
     handler: async (args, ctx) => {
-      const prNumber = args.trim();
-      if (!prNumber || !/^\d+$/.test(prNumber)) {
-        ctx.ui.notify("Usage: /pr-comments <PR number>", "warning");
+      const prNumber = parsePRIdentifier(args);
+      if (prNumber == null) {
+        ctx.ui.notify("Usage: /pr-comments <positive PR number or GitHub PR URL>", "warning");
         return;
       }
 
@@ -567,11 +580,11 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerCommand("diff-review-pr", {
-    description: "Review a GitHub PR with pre-loaded review comments. Usage: /diff-review-pr <number>",
+    description: "Review a GitHub PR with pre-loaded review comments. Usage: /diff-review-pr <number-or-url>",
     handler: async (args, ctx) => {
-      const prNumber = args.trim();
-      if (!prNumber || !/^\d+$/.test(prNumber)) {
-        ctx.ui.notify("Usage: /diff-review-pr <PR number>", "warning");
+      const prNumber = parsePRIdentifier(args);
+      if (prNumber == null) {
+        ctx.ui.notify("Usage: /diff-review-pr <positive PR number or GitHub PR URL>", "warning");
         return;
       }
 
