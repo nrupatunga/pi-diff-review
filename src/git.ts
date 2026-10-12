@@ -214,6 +214,9 @@ export async function listBranches(pi: ExtensionAPI, cwd: string): Promise<{ rep
 export interface BranchCompareOptions {
   branch1: string;
   branch2: string;
+  /** Resolved merge-base used as the old/original side for three-dot comparisons. */
+  baseRef?: string;
+  comparison?: "two-dot" | "three-dot";
 }
 
 export async function getDiffReviewFiles(
@@ -226,10 +229,14 @@ export async function getDiffReviewFiles(
   let changedPaths: ChangedPath[];
 
   if (branchCompare != null) {
-    // Branch-to-branch comparison
+    // Branch-to-branch comparison uses PR-style three-dot semantics:
+    // compare the merge-base of branch1 and branch2 against branch2.
     const { branch1, branch2 } = branchCompare;
+    const baseRef = (await runGit(pi, repoRoot, ["merge-base", branch1, branch2])).trim();
+    branchCompare.baseRef = baseRef;
+    branchCompare.comparison = "three-dot";
     const trackedOutput = await runGit(pi, repoRoot, [
-      "diff", "--find-renames", "-M", "--name-status", branch1, branch2, "--",
+      "diff", "--find-renames", "-M", "--name-status", baseRef, branch2, "--",
     ]);
     changedPaths = parseNameStatus(trackedOutput)
       .filter(shouldIncludeChange)
@@ -266,7 +273,7 @@ export async function loadFileContents(
   branchCompare?: BranchCompareOptions,
 ): Promise<DiffReviewFileContents> {
   const oldContentPromise = branchCompare != null
-    ? (file.oldPath == null ? Promise.resolve("") : getRefContent(pi, repoRoot, branchCompare.branch1, file.oldPath))
+    ? (file.oldPath == null ? Promise.resolve("") : getRefContent(pi, repoRoot, branchCompare.baseRef ?? branchCompare.branch1, file.oldPath))
     : (file.oldPath == null ? Promise.resolve("") : getRefContent(pi, repoRoot, "HEAD", file.oldPath));
 
   const newContentPromise = branchCompare != null

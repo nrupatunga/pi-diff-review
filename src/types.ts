@@ -64,6 +64,7 @@ export type ReviewHostMessage = ReviewFileDataMessage | ReviewFileErrorMessage;
 export interface DiffReviewBranchCompareData {
   branch1: string;
   branch2: string;
+  comparison?: "two-dot" | "three-dot";
 }
 
 export interface DiffReviewWindowData {

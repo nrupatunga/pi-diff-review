@@ -105,8 +105,9 @@ repoRootEl.textContent = reviewData.repoRoot || "";
 if (reviewTitleEl) {
   const base = reviewData.branchCompare?.branch1;
   const compare = reviewData.branchCompare?.branch2;
+  const operator = reviewData.branchCompare?.comparison === "three-dot" ? "..." : "..";
   reviewTitleEl.textContent = base && compare
-    ? `Diff review (${base}..${compare})`
+    ? `Diff review (${base}${operator}${compare})`
     : "Diff review";
 }
 
